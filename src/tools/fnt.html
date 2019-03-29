@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>FNT Viewer</title>
+    <style>
+      html, body {
+	margin: 0;
+	padding: 0;
+      }
+
+      canvas {
+	image-rendering: pixelated;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas></canvas>
+    <script>
+      const canvas = document.querySelector('canvas')
+      canvas.imageSmoothingEnabled = false
+      canvas.width = 640
+      canvas.height = 640
+      canvas.style.width = `${canvas.width * 4}px`
+      canvas.style.height= `${canvas.height * 4}px`
+      const cx = canvas.getContext('2d')
+
+      function getString(dataView, start, end) {
+	let str = ''
+	for (let index = start; index < end; index++) {
+	  str += String.fromCharCode(dataView.getUint8(index))
+	}
+	return str
+      }
+
+      function renderFont(accuY, palette) {
+	return function(dataView) {
+	  console.log(String.fromCharCode(dataView.getUint8(0)))
+	  console.log(String.fromCharCode(dataView.getUint8(1)))
+	  console.log(String.fromCharCode(dataView.getUint8(2)))
+
+	  const charHeight = dataView.getUint8(4)
+	  // 0x05 (algunas veces 0, algunas veces 1) ???
+	  // 0x06 (2?)
+	  // 0x07 (2?)
+	  const rangeStart = dataView.getUint8(8)
+	  const rangeEnd = dataView.getUint8(9)
+
+	  let offset = 0x20, index = 0, accuX = 0
+	  while (offset < dataView.byteLength) {
+	    const charWidth = dataView.getUint8(offset)
+	    offset++
+	    for (let x = 0; x < charWidth; x++) {
+	      for (let y = 0; y < charHeight; y++) {
+		const colorIndex = dataView.getUint8(offset)
+		if (colorIndex === 0x00) {
+		  offset++
+		  continue
+		}
+		const r = palette.getUint8((colorIndex * 3) + 0) * 4
+		const g = palette.getUint8((colorIndex * 3) + 1) * 4
+		const b = palette.getUint8((colorIndex * 3) + 2) * 4
+		cx.fillStyle = `rgb(${r},${g},${b})`
+		cx.fillRect(accuX + x,accuY + (charHeight - 1 - y),1,1)
+		offset++
+	      }
+	    }
+	    accuX += charWidth
+	    index++
+	  }
+	}
+      }
+
+      function loadFont(url, accuY, palette) {
+	return fetch(url).then((response) => {
+	  return response.arrayBuffer()
+	}).then((arrayBuffer) => {
+	  return new DataView(arrayBuffer)
+	}).then(renderFont(accuY, palette))
+      }
+
+      fetch('out/SECBASE.PAL').then((response) => {
+	return response.arrayBuffer()
+      }).then((arrayBuffer) => {
+	return new DataView(arrayBuffer)
+      }).then((palette) => {
+	loadFont('out/FNT/AMONUM.FNT', 0, palette)
+	loadFont('out/FNT/ARMNUM.FNT', 16, palette)
+	loadFont('out/FNT/HELNUM.FNT', 32, palette)
+	loadFont('out/FNT/GLOWING.FNT', 48, palette)
+	loadFont('out/FNT/MAP-NUMS.FNT', 64, palette)
+	loadFont('out/FNT/SUPERWEP.FNT', 80, palette)
+	loadFont('out/FNT/SWFONT1.FNT', 96, palette)
+      })
+
+    </script>
+  </body>
+</html>

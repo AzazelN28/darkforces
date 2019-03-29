@@ -1,0 +1,300 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Star Wars: Dark Forces Level Viewer</title>
+    <style>
+      html, body {
+	background: #000;
+	color: #fff;
+	margin: 0;
+	padding: 0;
+	display: flex;
+      }
+
+      html, body, canvas {
+	width: 100%;
+	height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas></canvas>
+    <script>
+      const testLine = '    WALL LEFT:   0  RIGHT:   1  MID:  49   0.00   0.00   0  TOP:  49   0.00   0.00   0  BOT:  49   0.00   0.00   0  SIGN:  -1   0.00   0.00  ADJOIN:  58  MIRROR:  32  WALK:  58  FLAGS: 0 0 0  LIGHT: 0'
+      console.log(testLine.match(/^    WALL\s+LEFT:\s+([0-9]+)\s+RIGHT:\s+([0-9]+)\s+MID:\s+([0-9]+)\s+(-?[0-9]+\.[0-9]+)\s+(-?[0-9]+\.[0-9]+)\s+([0-9]+)\s+TOP:\s+([0-9]+)\s+(-?[0-9]+\.[0-9]+)\s+(-?[0-9]+\.[0-9]+)\s+([0-9]+)\s+BOT:\s+([0-9]+)\s+(-?[0-9]+\.[0-9]+)\s+(-?[0-9]+\.[0-9]+)\s+([0-9]+)\s+SIGN:\s+(-?[0-9]+)\s+(-?[0-9]+\.[0-9]+)\s+(-?[0-9]+\.[0-9]+)\s+ADJOIN:\s+([0-9]+)\s+MIRROR:\s+([0-9]+)\s+WALK:\s+([0-9]+)\s+FLAGS:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+LIGHT:\s+([0-9]+)/))
+
+      const textures = []
+      const layers = [
+	'#05f',
+	'#0ff',
+	'#ff0',
+	'#f50',
+	'#555',
+	'#fff',
+	'#f0f',
+	'#505'
+      ]
+      const enabledLayers = new Map([
+	[-9, true],
+	[-8, true],
+	[-7, true],
+	[-6, true],
+	[-5, true],
+	[-4, true],
+	[-3, true],
+	[-2, true],
+	[-1, true],
+	[0, true],
+	[1, true],
+	[2, true],
+	[3, true],
+	[4, true],
+	[5, true],
+	[6, true],
+	[7, true],
+	[8, true],
+	[9, true]
+      ])
+
+      const ro = new ResizeObserver((entries) => {
+	for (const entry of entries) {
+	  entry.target.width = entry.target.clientWidth
+	  entry.target.height = entry.target.clientHeight
+	}
+      })
+
+      const canvas = document.querySelector('canvas')
+      const cx = canvas.getContext('2d')
+
+      const sectors = []
+
+      ro.observe(canvas)
+
+      canvas.ondragleave = (e) => console.log(e)
+      canvas.ondragenter = (e) => {
+	console.log(e)
+	e.preventDefault()
+	console.log(e.dataTransfer.getData("text/plain"))
+	console.log(e.dataTransfer.files)
+      }
+      canvas.ondragstart = (e) => console.log(e)
+      canvas.ondragend = (e) => console.log(e)
+      canvas.ondragover = (e) => {
+	e.preventDefault()
+        console.log(e)
+      }
+      canvas.ondrop = (e) => {
+	e.preventDefault()
+	console.log(e.dataTransfer.files)
+	const [file] = e.dataTransfer.files
+	const fr = new FileReader()
+	fr.onprogress = (e) => console.log(e)
+	fr.onerror = (e) => {
+	  console.log(e)
+	}
+	fr.onload = (e) => {
+	  while (sectors.pop());
+	  let currentSector = null
+	  let numSectors = 0
+	  const data = fr.result
+	  const lines = data.split('\n')
+	  for (const line of lines) {
+	    console.log(line)
+	    if (line.substr(0,1) === '#') {
+	      //console.log('Comment', line)
+	    } else if (/^LEV [0-9]\.[0-9]/.test(line)) {
+	    } else if (/^(LEVELNAME|PALETTE|MUSIC) .+/.test(line)) {
+	    } else if (/^PARALLAX [0-9]+\.[0-9]+ [0-9]+\.[0-9]+/.test(line)) {
+	    } else if (/^TEXTURES [0-9]+/.test(line)) {
+	    } else if (/^  TEXTURE: .+/.test(line)) {
+	      const [, str] = line.match(/^  TEXTURE:\s+.*/)
+	      textures.push(str)
+	    } else if (/^NUMSECTORS [0-9]+/.test(line)) {
+	      const [, num] = line.match(/^NUMSECTORS ([0-9]+)/)
+	      numSectors = parseFloat(num)
+	    } else if (/^SECTOR [0-9]+/.test(line)) {
+	      const [, num] = line.match(/^SECTOR ([0-9]+)/)
+	      currentSector = parseFloat(num)
+	      sectors[currentSector] = {
+		name: null,
+		ambient: null,
+		floor: null,
+		ceiling: null,
+		second: null,
+		flags: null,
+		layer: null,
+		numVertices: null,
+		vertices: null,
+		numWalls: null,
+		walls: null
+	      }
+	    } else if (/^  NAME\s+.*/.test(line)) {
+	      const [, str] = line.match(/^  NAME\s+(.*)/)
+	      sectors[currentSector].name = str
+	    } else if (/^  AMBIENT\s+[0-9]+/.test(line)) {
+	      const [, num] = line.match(/^  AMBIENT\s+([0-9]+)/)
+	      sectors[currentSector].ambient = parseFloat(num)
+	    } else if (/^  FLOOR TEXTURE\s+.*/.test(line)) {
+	      const [, num, x, y, u] = line.match(/^  FLOOR TEXTURE\s+([0-9]+)\s+(-?[0-9]+\.[0-9]+)\s+(-?[0-9]+\.[0-9]+)\s+([0-9]+)/)
+	      sectors[currentSector].floor = {
+		texture: parseFloat(num),
+		offset: [parseFloat(x), parseFloat(y)],
+		unknown: u,
+		height: null
+	      }
+	    } else if (/^  FLOOR ALTITUDE .*/.test(line)) {
+	      const [, num] = line.match(/^  FLOOR ALTITUDE\s+(-?[0-9]+(\.[0-9]+)?)/)
+	      sectors[currentSector].floor.height = parseFloat(num)
+	    } else if (/^  CEILING TEXTURE .*/.test(line)) {
+	      const [, num, x, y, u] = line.match(/^  CEILING TEXTURE\s+([0-9]+)\s+(-?[0-9]+(\.[0-9]+)?)\s+(-?[0-9]+(\.[0-9]+)?)\s+([0-9]+)/)
+	      sectors[currentSector].ceiling = {
+		texture: parseFloat(num),
+		offset: [parseFloat(x), parseFloat(y)],
+		unknown: u,
+		height: null
+	      }
+	    } else if (/^  CEILING ALTITUDE\s+.*/.test(line)) {
+	      const [, num] = line.match(/^  CEILING ALTITUDE\s+(-?[0-9]+(\.[0-9]+)?)/)
+	      sectors[currentSector].ceiling.height = parseFloat(num)
+	    } else if (/^  SECOND ALTITUDE\s+.*/.test(line)) {
+	      const [, num] = line.match(/^  SECOND ALTITUDE\s+(-?[0-9]+(\.[0-9]+)?)/)
+	      sectors[currentSector].second = {
+		height: parseFloat(num)
+	      }
+	    } else if (/^  FLAGS .*/.test(line)) {
+	      const [, a,b,c] = line.match(/^  FLAGS ([0-9]+) ([0-9]+) ([0-9]+)/)
+	      sectors[currentSector].flags = {
+		a: parseFloat(a),
+		b: parseFloat(b),
+		c: parseFloat(c),
+	      }
+	    } else if (/^  LAYER .*/.test(line)) {
+	      const [, num] = line.match(/^  LAYER (-?[0-9]+)/)
+	      sectors[currentSector].layer = parseFloat(num)
+	    } else if (/^  VERTICES [0-9]+/.test(line)) {
+	      const [, num] = line.match(/^  VERTICES ([0-9]+)/)
+	      sectors[currentSector].numVertices = parseFloat(num)
+	      sectors[currentSector].vertices = []
+	    } else if (/^    X:\s+(-?[0-9]+\.[0-9]+)\s+Z:\s+(-?[0-9]+\.[0-9]+)/.test(line)) {
+	      const [, x, y] = line.match(/^    X:\s+(-?[0-9]+\.[0-9]+)\s+Z:\s+(-?[0-9]+\.[0-9]+)/)
+	      sectors[currentSector].vertices.push([x,y])
+	    } else if (/^  WALLS\s+[0-9]+/.test(line)) {
+	      const [, num] = line.match(/^  WALLS\s+([0-9]+)/)
+	      sectors[currentSector].numWalls = parseFloat(num)
+	      sectors[currentSector].walls = []
+	    } else if (/^    WALL\s+.*/.test(line)) {
+	      const [, left, right, mid, mx, my, mu, top, tx, ty, tu, bot, bx, by, bu, adjoin, mirror, walk, a, b, c, light] = line.match(/^    WALL\s+LEFT:\s+([0-9]+)\s+RIGHT:\s+([0-9]+)\s+MID:\s+([0-9]+)\s+(-?[0-9]+(\.[0-9]+)?)\s+(-?[0-9]+(\.[0-9]+)?)\s+([0-9]+)\s+TOP:\s+([0-9]+)\s+(-?[0-9]+(\.[0-9]+)?)\s+(-?[0-9]+(\.[0-9]+)?)\s+([0-9]+)\s+BOT:\s+([0-9]+)\s+(-?[0-9]+(\.[0-9]+)?)\s+(-?[0-9]+(\.[0-9]+)?)\s+([0-9]+)\s+SIGN:\s+(-?[0-9]+)\s+(-?[0-9]+(\.[0-9]+)?)\s+(-?[0-9]+(\.[0-9]+)?)\s+ADJOIN:\s+(-?[0-9]+)\s+MIRROR:\s+(-?[0-9]+)\s+WALK:\s+(-?[0-9]+)\s+FLAGS:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+LIGHT:\s+([0-9]+)/)
+	      sectors[currentSector].walls.push({
+		left,
+		right,
+		mid: {
+		  texture: mid,
+		  offset: [mx,my],
+		  unknown: mu
+		},
+		bot: {
+		  texture: bot,
+		  offset: [bx,by],
+		  unknown: bu
+		},
+		top: {
+		  texture: top,
+		  offset: [tx,ty],
+		  unknown: tu
+		},
+		flags: {
+		  a,b,c
+		},
+		mirror,
+		walk,
+		light
+	      })
+	    }
+	  } // end for?
+	  console.log(sectors, layers)
+	}
+	fr.readAsText(file)
+      }
+
+      let frameID
+
+      const scroll = {
+	position: [0,0],
+	velocity: [0,0],
+	zoom: 1,
+	zoomVelocity: 0
+      }
+
+      const keys = new Map()
+      window.addEventListener('keyup', (e) => {
+	keys.set(e.code, false)
+	if (/Digit[0-9]/.test(e.code)) {
+	  const [,layer] = e.code.match(/Digit([0-9])/)
+	  const numLayer = parseFloat(layer)
+	  enabledLayers.set(numLayer, !enabledLayers.get(numLayer))
+	}
+      })
+      window.addEventListener('keydown', (e) => keys.set(e.code, true))
+
+      function frame(t) {
+	if (keys.get('KeyA')) {
+	  scroll.zoomVelocity+=0.01
+	}
+
+	if (keys.get('KeyZ')) {
+	  scroll.zoomVelocity-=0.01
+	}
+
+	if (keys.get('ArrowLeft')) {
+	  scroll.velocity[0]++
+	} else if (keys.get('ArrowRight')) {
+	  scroll.velocity[0]--
+	}
+
+	if (keys.get('ArrowUp')) {
+	  scroll.velocity[1]++
+	} else if (keys.get('ArrowDown')) {
+	  scroll.velocity[1]--
+	}
+
+	scroll.zoom += scroll.zoomVelocity
+
+	scroll.position[0] += scroll.velocity[0]
+	scroll.position[1] += scroll.velocity[1]
+
+	scroll.velocity[0] *= 0.9
+	scroll.velocity[1] *= 0.9
+
+	scroll.zoomVelocity *= 0.9
+
+	cx.clearRect(0,0,cx.canvas.width,cx.canvas.height)
+	cx.save()
+	cx.translate(scroll.position[0],scroll.position[1])
+	for (const sector of sectors) {
+	  if (enabledLayers.get(sector.layer)) {
+	    cx.strokeStyle = layers[sector.layer]
+	    for (const wall of sector.walls) {
+	      const [sx,sy] = sector.vertices[wall.left]
+	      const [ex,ey] = sector.vertices[wall.right]
+	      cx.beginPath()
+	      cx.moveTo(sx * scroll.zoom,sy * scroll.zoom)
+	      cx.lineTo(ex * scroll.zoom,ey * scroll.zoom)
+	      cx.stroke()
+	    }
+
+	    cx.fillStyle = '#ff0'
+	    for (const [vx,vy] of sector.vertices) {
+	      cx.fillRect((vx * scroll.zoom) - 2,(vy * scroll.zoom) - 2,4,4)
+	    }
+	  }
+	}
+	cx.restore()
+	frameID = window.requestAnimationFrame(frame)
+      }
+
+      frameID = window.requestAnimationFrame(frame)
+
+    </script>
+  </body>
+</html>
