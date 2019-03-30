@@ -1,9 +1,12 @@
 {
-  "presets": ["env", "stage-2"],
+  "presets": ["@babel/preset-env"],
 
   "plugins": [
     ["module-resolver", {
       "root": ["src"]
+    }],
+    ["@babel/plugin-transform-runtime", {
+      "regenerator": true
     }]
   ],
 

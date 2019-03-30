@@ -2,7 +2,7 @@
 import dataViewUtils from 'utils/dataView'
 import rle from 'utils/rle'
 import pal from 'files/pal'
-import { createParseEntry } from '../utils/parse';
+import { createParseEntry } from 'utils/parse'
 
 /**
  * Enumeration of compression types.
@@ -182,7 +182,6 @@ export function use(bitmap, palette) {
         pal.set(bitmap.imageData.data, dataOffset, 0, 0, 0, 0)
       } else {
         const paletteOffset = paletteIndex * 4
-        //console.log(x,y,width,height,'dataOffset', dataOffset, 'bufferOffset', bufferOffset, 'paletteIndex', paletteIndex, 'paletteOffset', paletteOffset)
         pal.copy(bitmap.imageData.data, dataOffset, palette, paletteOffset)
       }
       bufferOffset++

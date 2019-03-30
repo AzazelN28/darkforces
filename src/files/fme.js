@@ -9,31 +9,39 @@ import pal from 'files/pal'
  * @param {number} start
  * @param {number} size
  */
-export function parse(dataView, start, size) { // eslint-disable-line
-  const offsetX = dataView.getUint32(start + 0, true)
-  const offsetY = dataView.getUint32(start + 4, true)
-  const flip = dataView.getUint32(start + 8, true)
-  const dataOffset = start + dataView.getUint32(start + 12, true)
-  const unitWidth = dataView.getUint32(start + 16, true)
-  const unitHeight = dataView.getUint32(start + 20, true)
+export function parse(dataView, start, size, { wax } = { wax: null }) { // eslint-disable-line
+  const offsetX = dataView.getInt32(start + 0, true)
+  const offsetY = dataView.getInt32(start + 4, true)
+  const flip = dataView.getInt32(start + 8, true)
+  const dataOffset = dataView.getInt32(start + 12, true)
+  const unitWidth = dataView.getInt32(start + 16, true)
+  const unitHeight = dataView.getInt32(start + 20, true)
+  const unknown1 = dataView.getInt32(start + 24, true)
+  const unknown2 = dataView.getInt32(start + 28, true)
 
-  const width = dataView.getUint32(dataOffset + 0, true)
-  const height = dataView.getUint32(dataOffset + 4, true)
-  const compression = dataView.getUint32(dataOffset + 8, true)
-  const bufferSize = dataView.getUint32(dataOffset + 12, true)
-  const columnOffset = start + dataView.getUint32(dataOffset + 16, true)
+  const dataOffsetFromStart = wax ? wax.start + dataOffset : start + dataOffset
 
+  const width = dataView.getInt32(dataOffsetFromStart + 0, true)
+  const height = dataView.getInt32(dataOffsetFromStart + 4, true)
+  const compression = dataView.getInt32(dataOffsetFromStart + 8, true)
+  const bufferSize = dataView.getInt32(dataOffsetFromStart + 12, true)
+  const columnOffset = dataView.getInt32(dataOffsetFromStart + 16, true)
+  const columnOffsetFromStart = start + columnOffset
+  const unknown3 = dataView.getInt32(dataOffsetFromStart + 20, true)
   if (!compression) {
-    const buffer = new Uint8ClampedArray(dataView.buffer.slice(dataOffset + 20, dataOffset + 20 + bufferSize))
+    const buffer = new Uint8ClampedArray(dataView.buffer.slice(dataOffsetFromStart + 24, dataOffsetFromStart + 24 + bufferSize))
     const imageData = new ImageData(width, height)
     return {
+      unknown1,
+      unknown2,
+      unknown3,
       unitWidth,
       unitHeight,
       offsetX,
       offsetY,
       flip,
       dataOffset,
-      columnOffset,
+      dataOffsetFromStart,
       width,
       height,
       compression,
@@ -45,7 +53,7 @@ export function parse(dataView, start, size) { // eslint-disable-line
 
   const offsets = []
   for (let index = 0; index < width; index++) {
-    offsets.push(dataOffset + dataView.getUint32(columnOffset + 56 + (index * 4), true))
+    offsets.push(dataOffsetFromStart + dataView.getInt32((wax ? dataOffsetFromStart + 24 : columnOffsetFromStart + 56) + (index * 4), true))
   }
 
   const buffer = rle.decompress(
@@ -56,12 +64,16 @@ export function parse(dataView, start, size) { // eslint-disable-line
   )
   const imageData = new ImageData(width, height)
   return {
+    unknown1,
+    unknown2,
+    unknown3,
     unitWidth,
     unitHeight,
     offsetX,
     offsetY,
     flip,
     dataOffset,
+    dataOffsetFromStart,
     width,
     height,
     compression,
@@ -92,13 +104,12 @@ export function use(bitmap, palette) {
       // We need to invert the Y because all the numbers are
       // upside-down.
       const iY = (bitmap.height - y - 1)
-      const dataOffset = ((iY * bitmap.width) + x) * 4
+      const dataOffset = bitmap.flip ? ((iY * bitmap.width) + (bitmap.width - x)) * 4 : ((iY * bitmap.width) + x) * 4
       const paletteIndex = bitmap.buffer[bufferOffset]
       if (paletteIndex === 0) {
         pal.set(bitmap.imageData.data, dataOffset, 0, 0, 0, 0)
       } else {
         const paletteOffset = paletteIndex * 4
-        //console.log(x,y,width,height,'dataOffset', dataOffset, 'bufferOffset', bufferOffset, 'paletteIndex', paletteIndex, 'paletteOffset', paletteOffset)
         pal.copy(bitmap.imageData.data, dataOffset, palette, paletteOffset)
       }
       bufferOffset++
@@ -114,7 +125,7 @@ export function use(bitmap, palette) {
  * @param {number} y
  */
 export function render(bitmap, cx, x = 0, y = 0) {
-  cx.putImageData(bitmap.imageData, x, y)
+  cx.putImageData(bitmap.imageData, x + bitmap.offsetX, y + bitmap.offsetY)
 }
 
 export default {

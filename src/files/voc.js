@@ -1,5 +1,6 @@
 /** @module files/voc */
 import dataViewUtils from 'utils/dataView'
+import typedArray from 'utils/typedArray'
 import { createParseEntry } from 'utils/parse'
 
 /**
@@ -241,7 +242,43 @@ export function parse(dataView, start, size) {
  */
 export const parseEntry = createParseEntry(parse)
 
+/**
+ * Creates an AudioBuffer from a DirectoryEntry
+ * @param {AudioContext} audioContext
+ * @param {DirectoryEntry} entry
+ * @returns {AudioBuffer}
+ */
+export function createAudioBufferFromEntry(audioContext, entry) {
+  let bufferLength = 0
+  let sampleRate = null
+  const buffers = []
+  for (const block of entry.blocks) {
+    if (block.type === BlockType.SOUND_DATA) {
+      sampleRate = Math.round(block.payload.sampleRate / 1000) * 1000
+    }
+
+    if (block.type === BlockType.SOUND_DATA || block.type === BlockType.SOUND_DATA_CONTINUATION) {
+      bufferLength += block.payload.buffer.length
+      buffers.push(block.payload.buffer)
+    }
+  }
+
+  if (bufferLength === 0) {
+    throw new Error('Invalid buffer length')
+  }
+
+  if (sampleRate === null) {
+    throw new Error('Invalid sample rate')
+  }
+
+  const buffer = typedArray.createFloat32FromUint8(typedArray.from(...buffers))
+  const audioBuffer = audioContext.createBuffer(1, bufferLength, sampleRate)
+  audioBuffer.copyToChannel(buffer, 0, 0)
+  return audioBuffer
+}
+
 export default {
   parse,
   parseEntry,
+  createAudioBufferFromEntry
 }

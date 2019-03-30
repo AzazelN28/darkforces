@@ -3,6 +3,44 @@ import dataViewUtils from 'utils/dataView'
 import fme from 'files/fme'
 import { createParseEntry } from 'utils/parse'
 
+const MAX_STATES = 32
+const MAX_FRAMES = 32
+const MAX_ANGLES = 32
+
+export const GeneralStateNames = [
+  'walk',
+  'attack',
+  'die',
+  'die-alt',
+  'dead',
+  'idle',
+  'attack-follow',
+  'attack-alt',
+  'attack-follow-alt',
+  'fly',
+  'none',
+  'none',
+  'pain',
+  'special'
+]
+
+export const RemoteStateNames = [
+  'walk',
+  'idle',
+  'die',
+  'die'
+]
+
+export const SceneryStateNames = [
+  'idle',
+  'dead'
+]
+
+export const BarrelStateNames = [
+  'idle',
+  'die'
+]
+
 /**
  * Parses a .WAX file from a DataView
  * @param {DataView} dataView
@@ -15,52 +53,59 @@ export function parse(dataView, start, size) { // eslint-disable-line
    && !dataViewUtils.verify(dataView, start, [0x00, 0x00, 0x01, 0x00])) {
     throw new Error('Invalid WAX signature')
   }
-  const numSequences = dataView.getUint32(start + 4, true)
-  const numFrames = dataView.getUint32(start + 8, true)
-  const numCells = dataView.getUint32(start + 12, true)
-  const scaleX = dataView.getUint32(start + 16, true)
-  const scaleY = dataView.getUint32(start + 20, true)
-  const unknown1 = dataView.getUint32(start + 24, true)
-  const unknown2 = dataView.getUint32(start + 28, true)
-  console.log(numSequences, numFrames, numCells, scaleX, scaleY, unknown1, unknown2)
+  const numSequences = dataView.getInt32(start + 4, true)
+  const numFrames = dataView.getInt32(start + 8, true)
+  const numCells = dataView.getInt32(start + 12, true)
+  const scaleX = dataView.getInt32(start + 16, true)
+  const scaleY = dataView.getInt32(start + 20, true)
+  const unknown1 = dataView.getInt32(start + 24, true)
+  const unknown2 = dataView.getInt32(start + 28, true)
   const states = []
-  for (let i = 0; i < 32; i++) {
+  for (let i = 0; i < MAX_STATES; i++) {
     const iOffset = start + 32 + (i * 4)
-    const stateOffset = start + dataView.getUint32(iOffset, true)
-    console.log(stateOffset)
+    const stateOffset = dataView.getInt32(iOffset, true)
     if (stateOffset === 0)
       continue
 
-    const width = dataView.getUint32(stateOffset + 0, true)
-    const height = dataView.getUint32(stateOffset + 4, true)
-    const frameRate = dataView.getUint32(stateOffset + 8, true)
-    const numFrames = dataView.getUint32(stateOffset + 12, true)
-    const unknown3 = dataView.getUint32(stateOffset + 16, true)
-    const unknown4 = dataView.getUint32(stateOffset + 20, true)
-    const unknown5 = dataView.getUint32(stateOffset + 24, true)
-    console.log(i, width, height, frameRate, numFrames, unknown3, unknown4, unknown5)
+    const stateOffsetFromStart = start + stateOffset
+
+    const width = dataView.getInt32(stateOffsetFromStart + 0, true)
+    const height = dataView.getInt32(stateOffsetFromStart + 4, true)
+    const frameRate = dataView.getInt32(stateOffsetFromStart + 8, true)
+    const numFrames = dataView.getInt32(stateOffsetFromStart + 12, true)
+
+    const unknown3 = dataView.getInt32(stateOffsetFromStart + 16, true)
+    const unknown4 = dataView.getInt32(stateOffsetFromStart + 20, true)
+    const unknown5 = dataView.getInt32(stateOffsetFromStart + 24, true)
+
     const angles = []
-    for (let j = 0; j < 32; j++) {
-      const jOffset = stateOffset + 28 + (j * 4)
-      const angleOffset = start + dataView.getUint32(jOffset, true)
+    for (let j = 0; j < MAX_ANGLES; j++) {
+      const jOffset = stateOffsetFromStart + 28 + (j * 4)
+
+      const angleOffset = dataView.getInt32(jOffset, true)
       if (angleOffset === 0)
         continue
 
-      const unknown6 = dataView.getUint32(angleOffset + 0, true)
-      const unknown7 = dataView.getUint32(angleOffset + 4, true)
-      const unknown8 = dataView.getUint32(angleOffset + 8, true)
-      const unknown9 = dataView.getUint32(angleOffset + 12, true)
+      const angleOffsetFromStart = start + angleOffset
+
+      const unknown6 = dataView.getInt32(angleOffsetFromStart + 0, true)
+      const unknown7 = dataView.getInt32(angleOffsetFromStart + 4, true)
+      const unknown8 = dataView.getInt32(angleOffsetFromStart + 8, true)
+      const unknown9 = dataView.getInt32(angleOffsetFromStart + 12, true)
+
       const frames = []
-      for (let k = 0; k < 32; k++) {
-        const kOffset = angleOffset + 16 + (k * 4)
-        const frameOffset = start + dataView.getUint32(kOffset, true)
+      for (let k = 0; k < MAX_FRAMES; k++) {
+        const kOffset = angleOffsetFromStart + 16 + (k * 4)
+
+        const frameOffset = dataView.getInt32(kOffset, true)
         if (frameOffset === 0)
           continue
 
+        const frameOffsetFromStart = start + frameOffset
         frames.push({
-          index: k
+          index: k,
+          fme: fme.parse(dataView, frameOffsetFromStart, undefined, { wax: { start } })
         })
-        //frames.push(fme.parse(dataView, frameOffset))
       }
       angles.push({
         index: j,
@@ -106,6 +151,10 @@ export function parse(dataView, start, size) { // eslint-disable-line
 export const parseEntry = createParseEntry(parse)
 
 export default {
+  GeneralStateNames,
+  RemoteStateNames,
+  SceneryStateNames,
+  BarrelStateNames,
   parse,
   parseEntry,
 }

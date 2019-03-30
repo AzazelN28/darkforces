@@ -87,7 +87,6 @@ export function use(font, palette) {
           pal.set(imageData.data, dataOffset, 0, 0, 0, 0)
         } else {
           const paletteOffset = paletteIndex * 4
-          //console.log(x,y,width,height,'dataOffset', dataOffset, 'bufferOffset', bufferOffset, 'paletteIndex', paletteIndex, 'paletteOffset', paletteOffset)
           pal.copy(imageData.data, dataOffset, palette, paletteOffset)
         }
         bufferOffset++

@@ -53,7 +53,10 @@ export function createParseEntry(parse) {
  * @param {Object} states
  */
 export function parseContent(content, initialState, states) {
-  const lines = content.split('\n')
+  const lines = content
+    .replace(/^#(.*?)\n/gm, '') // remove comments that begin with #
+    .replace(/\/\*([\s\S]*?)\*\//g, '') // remove multiline comments
+    .split('\n')
 
   let state = initialState
     , lineIndex = 0
@@ -62,8 +65,8 @@ export function parseContent(content, initialState, states) {
     const line = lines[index]
     // if the line is empty or it begins with a comment, then
     // we skip this line completely.
-    if (!line.trim() ||
-      line.trim().substr(0, 1) === '#') {
+    if (!line.trim()
+      || line.trim().substr(0, 1) === '#') {
       continue
     }
 
@@ -88,7 +91,7 @@ export function parseLine(format, line) {
     .replace(/^\s+/, '\\s*')
     .replace(/\s+/g, '\\s+')
     .replace(/$/, '\\s*(?:# .*)?')
-    .replace(/\{(v|n|i|d|a|\*)\}/g, (fullMatch, type) => {
+    .replace(/\{(.*?)\}/g, (_, type) => {
       switch(type) {
       case 'v':
         transform.push(Transform.identity)
@@ -109,17 +112,19 @@ export function parseLine(format, line) {
         transform.push(Transform.identity)
         return Expression.ANY
       default:
-        return fullMatch
+        transform.push(Transform.identity)
+        return type
       }
     })
-  //console.log(expression)
+  // console.log(expression)
   const re = new RegExp(expression, 'i')
   const matches = line.match(re)
-  //console.log(matches)
+  // console.log(matches, transform)
   if (matches) {
     const [, ...values] = matches
     return values.map((value, index) => transform[index](value))
   }
+  return []
 }
 
 export default {

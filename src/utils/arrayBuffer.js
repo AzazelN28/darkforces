@@ -22,7 +22,13 @@ export function fromString(string) {
  * @returns {string}
  */
 export function toString(arrayBuffer) {
-  return String.fromCharCode.apply(null, new Uint8Array(arrayBuffer))
+  const array = new Uint8Array(arrayBuffer)
+  let string = ''
+  for (let i = 0; i < array.length; i++) {
+    string += String.fromCharCode(array[i])
+  }
+  return string
+  //return String.fromCharCode.apply(null, new Uint8Array(arrayBuffer))
 }
 
 export default {

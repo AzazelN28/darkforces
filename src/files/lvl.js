@@ -1,5 +1,6 @@
 /** @module files/lvl */
 import dataViewUtils from 'utils/dataView'
+import { parseContent, parseLine } from '../utils/parse'
 
 /**
  * Parses a .LVL file.
@@ -9,38 +10,26 @@ import dataViewUtils from 'utils/dataView'
  */
 export function parse(dataView, start, size) {
   const content = dataViewUtils.toString(dataView, start, size)
-  const lines = content.split('\n')
-  let numLevels = 0
-    , numLevel = 0
-    , state = 'count'
+  let levelCount
   const levels = []
-  for (let index = 0; index < lines.length; index++) {
-    const line = lines[index]
-    if (state === 'count') {
-      const matches = line.match(/^LEVELS\s+([0-9]+)\s*$/)
-      if (matches) {
-        const [, count] = matches
-        numLevels = parseInt(count, 10)
-        state = 'entries'
-      }
-    } else if (state === 'entries') {
-      if (numLevel < numLevels) {
-        const matches = line.match(/^(.*?),\s+(.*?),\s+(.*?)\s*$/m)
-        if (matches) {
-          numLevel++
-          const [, levelName, levelFileName, levelPaths] = matches
-          levels.push({
-            name: levelName,
-            fileName: levelFileName,
-            paths: levelPaths.split(';')
-          })
-        }
+  parseContent(content, 'count', {
+    'count': (line) => {
+      const [count] = parseLine('LEVELS {n}', line)
+      levelCount = count
+      return 'entries'
+    },
+    'entries': (line) => {
+      const [levelName, levelFileName, levelPaths] = parseLine('{a}, {a}, {a}', line)
+      levels.push({
+        name: levelName,
+        fileName: levelFileName,
+        paths: levelPaths.split(';')
+      })
+      if (levels.length < levelCount) {
+        return 'entries'
       }
     }
-  }
-  if (numLevels !== levels.length) {
-    throw new Error(`Invalid LVL count (${numLevels} != ${levels.length})`)
-  }
+  })
   return levels
 }
 
