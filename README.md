@@ -28,42 +28,42 @@ Next there is a list of known formats and their purpose:
 
 ## Weapons
 
-[ ] Fists
-[ ] Bryar Pistol
-[ ] Stormtrooper Blaster Rifle
-[ ] Thermal Detonator
-[ ] Imperial Repeater Gun
-[ ] Jeron Fusion Cutter
-[ ] I.M. Mines
-[ ] Packered Mortar Gun
-[ ] Stouker Concussion Rifle
-[ ] Assault Cannon
+- [ ] Fists
+- [ ] Bryar Pistol
+- [ ] Stormtrooper Blaster Rifle
+- [ ] Thermal Detonator
+- [ ] Imperial Repeater Gun
+- [ ] Jeron Fusion Cutter
+- [ ] I.M. Mines
+- [ ] Packered Mortar Gun
+- [ ] Stouker Concussion Rifle
+- [ ] Assault Cannon
 
 ## Enemies
 
-[ ] Stormtrooper
-[ ] Commando
-[ ] Officer
-[ ] Dianoga
-[ ] Interrogation droid
-[ ] Probe droid
-[ ] Remote droid
-[ ] Mouse bot
-[ ] Reeyees
-[ ] Bossks
-[ ] Gamorrean
-[ ] Ceiling Turret
-[ ] Kell Dragon
-[ ] Boba Fett
-[ ] Phase One Dark Trooper
-[ ] Phase Two Dark Trooper
-[ ] Phase Three Dark Trooper
+- [ ] Stormtrooper
+- [ ] Commando
+- [ ] Officer
+- [ ] Dianoga
+- [ ] Interrogation droid
+- [ ] Probe droid
+- [ ] Remote droid
+- [ ] Mouse bot
+- [ ] Reeyees
+- [ ] Bossks
+- [ ] Gamorrean
+- [ ] Ceiling Turret
+- [ ] Kell Dragon
+- [ ] Boba Fett
+- [ ] Phase One Dark Trooper
+- [ ] Phase Two Dark Trooper
+- [ ] Phase Three Dark Trooper
 
 ## Special Items
 
-[ ] Headlamp
-[ ] Night Vision Goggles
-[ ] Crampons
-[ ] Gasmask
+- [ ] Headlamp
+- [ ] Night Vision Goggles
+- [ ] Crampons
+- [ ] Gasmask
 
 Made with :heart: by [AzazelN28](https://github.com/azazeln28)
