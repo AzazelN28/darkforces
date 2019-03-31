@@ -66,4 +66,8 @@ Next there is a list of known formats and their purpose:
 - [ ] Crampons
 - [ ] Gasmask
 
+## Thanks
+
+- To [Nicholas Jankowski](https://github.com/njankowski) for his great [Dark Forces Tools](https://github.com/njankowski/dftools)
+
 Made with :heart: by [AzazelN28](https://github.com/azazeln28)

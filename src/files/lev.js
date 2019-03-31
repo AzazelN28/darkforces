@@ -54,12 +54,12 @@ export function parse(dataView, start, size) {
     },
     'palette': (line) => {
       const [name] = parseLine('PALETTE {a}', line)
-      levelPalette = name
+      levelPalette = name.toUpperCase().trim()
       return 'music'
     },
     'music': (line) => {
       const [name] = parseLine('MUSIC {a}', line)
-      levelMusic = name
+      levelMusic = name.toUpperCase().trim()
       return 'parallax'
     },
     'parallax': (line) => {

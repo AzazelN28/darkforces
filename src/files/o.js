@@ -1,4 +1,4 @@
-import dataViewUtils from 'utils/dataViewUtils'
+import dataViewUtils from 'utils/dataView'
 import { createParseEntry } from 'utils/parse'
 import { parseContent, parseLine } from 'utils/parse'
 
@@ -15,12 +15,12 @@ export function parse(dataView, start, size) {
   let levelName
     , podCount
     , pods = []
-    , waxCount
-    , waxs = []
-    , fmeCount
-    , fmes = []
-    , vocCount
-    , vocs = []
+    , spriteCount
+    , sprites = []
+    , frameCount
+    , frames = []
+    , soundCount
+    , sounds = []
     , objectCount // eslint-disable-line
     , objects = [] // eslint-disable-line
 
@@ -55,7 +55,7 @@ export function parse(dataView, start, size) {
     },
     'wax-count': (line) => {
       const [count] = parseLine('SPRS {n}', line)
-      waxCount = count
+      spriteCount = count
       if (count === 0) {
         return 'fme-count'
       }
@@ -63,15 +63,15 @@ export function parse(dataView, start, size) {
     },
     'wax': (line) => {
       const [name] = parseLine(' SPR: {a}', line)
-      waxs.push(name)
-      if (waxs.length === waxCount) {
+      sprites.push(name)
+      if (sprites.length === spriteCount) {
         return 'fme-count'
       }
       return 'wax'
     },
     'fme-count': (line) => {
       const [count] = parseLine('FMES {n}', line)
-      fmeCount = count
+      frameCount = count
       if (count === 0) {
         return 'voc-count'
       }
@@ -79,15 +79,15 @@ export function parse(dataView, start, size) {
     },
     'fme': (line) => {
       const [name] = parseLine(' FME: {a}', line)
-      fmes.push(name)
-      if (fmes.length === fmeCount) {
+      frames.push(name)
+      if (frames.length === frameCount) {
         return 'sound-count'
       }
       return 'fme'
     },
     'voc-count': (line) => {
       const [count] = parseLine('SOUNDS {n}', line)
-      vocCount = count
+      soundCount = count
       if (count === 0) {
         return 'object-count'
       }
@@ -95,8 +95,8 @@ export function parse(dataView, start, size) {
     },
     'voc': (line) => {
       const [name] = parseLine(' SOUND: {a}', line)
-      vocs.push(name)
-      if (vocs.length === vocCount) {
+      sounds.push(name)
+      if (sounds.length === soundCount) {
         return 'object-count'
       }
       return 'voc'
@@ -111,10 +111,21 @@ export function parse(dataView, start, size) {
     },
     'object': (line) => { // eslint-disable-line
       // TODO: See how to parse the CLASS elements.
+      return
     }
   })
   return {
-    levelName
+    name: levelName,
+    pods,
+    podCount,
+    sprites,
+    spriteCount,
+    frames,
+    frameCount,
+    sounds,
+    soundCount,
+    objects,
+    objectCount
   }
 }
 

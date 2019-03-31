@@ -74,7 +74,8 @@ export function parse(dataView, start, size) { // eslint-disable-line
   if (width === 1 && height !== 1) {
     const frameRate = dataView.getUint8(start + 20)
     const magicNumber = dataView.getUint8(start + 21)
-    if (magicNumber !== 0x02) {
+    console.log(magicNumber)
+    if (magicNumber !== 0x02 && magicNumber !== 0x00) {
       throw new Error('Invalid magic number')
     }
     const offsets = []

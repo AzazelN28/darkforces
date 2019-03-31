@@ -12,6 +12,8 @@ import gol from 'files/gol'
 import lfd from 'files/lfd'
 import o3d from 'files/3do'
 
+import level from 'level'
+
 import sound from 'audio/sound'
 
 document.onclick = () => {
@@ -42,37 +44,42 @@ document.onclick = () => {
       console.log(levels)
       const fall = voc.parseEntry(entryMap.get('FALL.VOC'))
       const mofRebus = fme.parseEntry(entryMap.get('MOFREBUS.FME'))
-      const stormTrooper = wax.parseEntry(entryMap.get('PHASE2.WAX'))
+      const stormTrooper = wax.parseEntry(entryMap.get('PHASE1.WAX'))
       console.log(stormTrooper)
       const statusRight = bm.parseEntry(entryMap.get('STATUSRT.BM'))
       const statusLeft = bm.parseEntry(entryMap.get('STATUSLF.BM'))
       const palette = pal.parseEntry(entryMap.get('SECBASE.PAL'))
-      const level = lev.parseEntry(entryMap.get('SECBASE.LEV'))
-      console.log(level)
+      //const level = lev.parseEntry(entryMap.get('SECBASE.LEV'))
+      //console.log(level)
+      const currentLevel = level.load(entryMap, 'SECBASE')
       const font = fnt.parseEntry(entryMap.get('GLOWING.FNT'))
       const goals = gol.parseEntry(entryMap.get('SECBASE.GOL'))
       console.log(goals)
       const audioContext = new AudioContext()
 
+
+
       // Este código convierte el audio recibido en un archivo
       // .VOC a un audio "audible" XD
       console.log(fall)
 
-      const audioBuffer = voc.createAudioBufferFromEntry(audioContext, fall)
-      const audioBufferSource = sound.play(audioContext, audioBuffer)
+      /*const audioBuffer = voc.createAudioBufferFromEntry(audioContext, fall)
+      const audioBufferSource = sound.play(audioContext, audioBuffer)*/
 
       const canvas = document.querySelector('canvas')
       const cx = canvas.getContext('2d')
+      canvas.width = 320
+      canvas.height = 200
       const scaleFactor = 0.5
       //console.log(defwax)
 
-      const ro = new ResizeObserver((entries) => {
+      /*const ro = new ResizeObserver((entries) => {
         for (const entry of entries) {
           entry.target.width = entry.target.clientWidth * scaleFactor
           entry.target.height = entry.target.clientHeight * scaleFactor
         }
       })
-      ro.observe(canvas)
+      ro.observe(canvas)*/
 
       fme.use(mofRebus, palette)
       for (const state of stormTrooper.states) {
