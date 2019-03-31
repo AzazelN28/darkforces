@@ -24,8 +24,8 @@ export function parse(dataView, start, size) {
   parseContent(content, 'version', {
     'version': (line) => {
       const [version] = parseLine('3DO {v}', line)
-      if (version !== '1.2') {
-        throw new Error('Invalid 3DO version')
+      if (version !== '1.2' && version !== '1.20' && version !== '1.30') {
+        throw new Error(`Invalid 3DO version, expected 1.2, 1.20 or 1.30, found ${version}`)
       }
       return 'name'
     },

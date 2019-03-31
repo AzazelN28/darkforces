@@ -162,14 +162,25 @@ export function parse(dataView, start, size) {
       return 'sector-wall'
     },
     'sector-wall': (line) => {
-      const [left,right,mid,top,bottom,sign,adjoin,mirror,walk,u,v,w,light] = parseLine(' WALL LEFT: {n} RIGHT: {n} MID: {n} {d} {d} {n} TOP: {n} {d} {d} {n} BOT: {n} {d} {d} {n} SIGN: {d} {d} {d} ADJOIN: {i} MIRROR: {i} WALK: {i} FLAGS: {n} {n} {n} LIGHT: {n}', line)
+      const [left,right,mid,midx,midy,midr,top,topx,topy,topr,bottom,bottomx,bottomy,bottomr,sign,signx,signy,adjoin,mirror,walk,u,v,w,light] = parseLine(' WALL LEFT: {i} RIGHT: {i} MID: {i} {d} {d} {i} TOP: {i} {d} {d} {i} BOT: {i} {d} {d} {i} SIGN: {d} {d} {d} ADJOIN: {i} MIRROR: {i} WALK: {i} FLAGS: {n} {n} {n} LIGHT: {n}', line)
       sector.walls.push({
         left,
         right,
         mid,
+        midx,
+        midy,
+        midr,
         top,
+        topx,
+        topy,
+        topr,
         bottom,
+        bottomx,
+        bottomy,
+        bottomr,
         sign,
+        signx,
+        signy,
         adjoin,
         mirror,
         walk,

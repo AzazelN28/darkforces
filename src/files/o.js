@@ -1,6 +1,7 @@
 import dataViewUtils from 'utils/dataView'
 import { createParseEntry } from 'utils/parse'
 import { parseContent, parseLine } from 'utils/parse'
+import { isLine } from '../utils/parse';
 
 /** @module files/o */
 
@@ -21,8 +22,10 @@ export function parse(dataView, start, size) {
     , frames = []
     , soundCount
     , sounds = []
-    , objectCount // eslint-disable-line
-    , objects = [] // eslint-disable-line
+    , objectCount
+    , objects = []
+    , object
+    , isObjectSequence = false
 
   parseContent(content, 'version', {
     'version': (line) => {
@@ -81,7 +84,7 @@ export function parse(dataView, start, size) {
       const [name] = parseLine(' FME: {a}', line)
       frames.push(name)
       if (frames.length === frameCount) {
-        return 'sound-count'
+        return 'voc-count'
       }
       return 'fme'
     },
@@ -110,8 +113,62 @@ export function parse(dataView, start, size) {
       return 'object'
     },
     'object': (line) => { // eslint-disable-line
-      // TODO: See how to parse the CLASS elements.
-      return
+      if (isLine('CLASS: {*} DATA: {i} X: {d} Y: {d} Z: {d} PCH: {d} YAW: {d} ROL: {d} DIFF: {i}', line) && !isObjectSequence) {
+        const [className, data, x, y, z, pitch, yaw, roll, diff] = parseLine('CLASS: {*} DATA: {i} X: {d} Y: {d} Z: {d} PCH: {d} YAW: {d} ROL: {d} DIFF: {i}', line)
+        object = {
+          className: className.toLowerCase().trim(),
+          data,
+          x,
+          y,
+          z,
+          pitch,
+          yaw,
+          roll,
+          diff,
+          typeName: null,
+          vue: null,
+          radius: 0,
+          height: 0,
+          eye: false,
+          pause: false,
+          logics: [],
+          flags: null
+        }
+      } else if (isLine(' SEQ', line) && !isObjectSequence) {
+        isObjectSequence = true
+      } else if (isLine(' SEQEND', line) && isObjectSequence) {
+        objects.push(object)
+        object = null
+        isObjectSequence = false
+        if (objects.length === objectCount) {
+          return
+        }
+      } else if (isLine(' LOGIC: {**}', line) && isObjectSequence) {
+        const [logic] = parseLine(' LOGIC: {**}', line)
+        object.logics.push(logic.trim())
+      } else if (isLine(' EYE: {b}', line) && isObjectSequence) {
+        const [eye] = parseLine(' EYE: {b}', line)
+        object.eye = eye
+      } else if (isLine(' FLAGS: {n}', line) && isObjectSequence) {
+        const [flags] = parseLine(' FLAGS: {b}', line)
+        object.flags = flags
+      } else if (isLine(' TYPE: {**}', line) && isObjectSequence) {
+        const [typeName] = parseLine(' TYPE: {**}', line)
+        object.typeName = typeName.trim()
+      } else if (isLine(' RADIUS: {d}', line) && isObjectSequence) {
+        const [radius] = parseLine(' RADIUS: {d}', line)
+        object.radius = radius
+      } else if (isLine(' HEIGHT: {d}', line) && isObjectSequence) {
+        const [height] = parseLine(' HEIGHT: {d}', line)
+        object.height = height
+      } else if (isLine(' PAUSE: {b}', line) && isObjectSequence) {
+        const [pause] = parseLine('PAUSE: {b}', line)
+        object.pause = pause
+      } else if (isLine(' VUE: {*} {*}', line) && isObjectSequence) {
+        const [vue, id] = parseLine('VUE: {*} {*}', line)
+        object.vue = [vue, id]
+      }
+      return 'object'
     }
   })
   return {

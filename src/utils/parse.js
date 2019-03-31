@@ -1,6 +1,13 @@
 /** @module utils/parse */
 
 /**
+ * Cache used to accelerate line parsing.
+ * @readonly
+ * @type {Map}
+ */
+const regExpCache = new Map()
+
+/**
  * Transform functions used to transform parsed params.
  * @readonly
  * @enum {Function}
@@ -10,7 +17,8 @@ export const Transform = {
   upperCase: (value) => value.toUpperCase(),
   lowerCase: (value) => value.toLowerCase(),
   integer: (value) => parseInt(value, 10),
-  decimal: (value) => parseFloat(value)
+  decimal: (value) => parseFloat(value),
+  boolean: (value) => /on|true|yes/.test(value)
 }
 
 /**
@@ -32,7 +40,9 @@ const Expression = {
   /** Name */
   NAME: '([^\\s]+)',
   /** Any value */
-  ANY: '(.*?)',
+  ANY: '([\\S]+)',
+  /** Any (but greedy) */
+  ANY_GREEDE: '(.*)',
 }
 
 /**
@@ -80,19 +90,21 @@ export function parseContent(content, initialState, states) {
 }
 
 /**
- * Parses a line
- * @param {string} format
- * @param {string} line
- * @returns {Array<string>}
+ * Retorna la expresión regular.
+ * @param {*} format
+ * @returns {RegExp}
  */
-export function parseLine(format, line) {
+export function getRegExp(format) {
+  if (regExpCache.has(format)) {
+    return regExpCache.get(format)
+  }
   const transform = []
   const expression = format
     .replace(/^\s+/, '\\s*')
     .replace(/\s+/g, '\\s+')
     .replace(/$/, '\\s*(?:# .*)?')
     .replace(/\{(.*?)\}/g, (_, type) => {
-      switch(type) {
+      switch (type) {
       case 'v':
         transform.push(Transform.identity)
         return Expression.VERSION
@@ -105,9 +117,15 @@ export function parseLine(format, line) {
       case 'd':
         transform.push(Transform.decimal)
         return Expression.DECIMAL
+      case 'b':
+        transform.push(Transform.boolean)
+        return Expression.BOOLEAN
       case 'a':
         transform.push(Transform.identity)
         return Expression.NAME
+      case '**':
+        transform.push(Transform.identity)
+        return Expression.ANY_GREEDE
       case '*':
         transform.push(Transform.identity)
         return Expression.ANY
@@ -117,12 +135,40 @@ export function parseLine(format, line) {
       }
     })
   // console.log(expression)
-  const re = new RegExp(expression, 'i')
+  const value = {
+    re: new RegExp(expression, 'i'),
+    transform
+  }
+  regExpCache.set(format, value)
+  return value
+}
+
+/**
+ * Returns if a line follows the current format
+ * @param {*} format
+ * @param {*} line
+ */
+export function isLine(format, line) {
+  const { re } = getRegExp(format)
+  return re.test(line)
+}
+
+/**
+ * Parses a line
+ * @param {string} format
+ * @param {string} line
+ * @returns {Array<string>}
+ */
+export function parseLine(format, line) {
+  const { re, transform } = getRegExp(format)
   const matches = line.match(re)
   // console.log(matches, transform)
   if (matches) {
     const [, ...values] = matches
-    return values.map((value, index) => transform[index](value))
+    return values.map((value, index) => {
+      //console.log(index, transform[index], value)
+      return transform[index](value)
+    })
   }
   return []
 }
@@ -130,5 +176,6 @@ export function parseLine(format, line) {
 export default {
   createParseEntry,
   parseContent,
+  isLine,
   parseLine,
 }

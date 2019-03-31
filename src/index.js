@@ -1,20 +1,8 @@
 import gob from 'files/gob'
-import fnt from 'files/fnt'
-import pal from 'files/pal'
-import bm from 'files/bm'
-import fme from 'files/fme'
-import wax from 'files/wax'
-import voc from 'files/voc'
-import lvl from 'files/lvl'
-import lev from 'files/lev'
-import msg from 'files/msg'
-import gol from 'files/gol'
 import lfd from 'files/lfd'
-import o3d from 'files/3do'
-
 import level from 'level'
-
 import sound from 'audio/sound'
+import { vec2 } from 'gl-matrix'
 
 document.onclick = () => {
   document.onclick = null
@@ -34,97 +22,166 @@ document.onclick = () => {
     )
     .then(entries => {
       const entryMap = new Map(entries.map(entry => [entry.name, entry]))
-      console.log(entryMap)
-
-      console.log(o3d.parseEntry(entryMap.get('DEFAULT.3DO')))
-      const text = msg.parseEntry(entryMap.get('TEXT.MSG'))
-      console.log(text)
-      //const local = msg.parseEntry(entryMap.get('LOCAL.MSG'))
-      const levels = lvl.parseEntry(entryMap.get('JEDI.LVL'))
-      console.log(levels)
-      const fall = voc.parseEntry(entryMap.get('FALL.VOC'))
-      const mofRebus = fme.parseEntry(entryMap.get('MOFREBUS.FME'))
-      const stormTrooper = wax.parseEntry(entryMap.get('PHASE1.WAX'))
-      console.log(stormTrooper)
-      const statusRight = bm.parseEntry(entryMap.get('STATUSRT.BM'))
-      const statusLeft = bm.parseEntry(entryMap.get('STATUSLF.BM'))
-      const palette = pal.parseEntry(entryMap.get('SECBASE.PAL'))
-      //const level = lev.parseEntry(entryMap.get('SECBASE.LEV'))
-      //console.log(level)
-      const currentLevel = level.load(entryMap, 'SECBASE')
-      const font = fnt.parseEntry(entryMap.get('GLOWING.FNT'))
-      const goals = gol.parseEntry(entryMap.get('SECBASE.GOL'))
-      console.log(goals)
-      const audioContext = new AudioContext()
-
-
-
-      // Este código convierte el audio recibido en un archivo
-      // .VOC a un audio "audible" XD
-      console.log(fall)
-
-      /*const audioBuffer = voc.createAudioBufferFromEntry(audioContext, fall)
-      const audioBufferSource = sound.play(audioContext, audioBuffer)*/
-
+      const currentLevel = level.load(entryMap, 'GROMAS')
+      console.log(currentLevel)
       const canvas = document.querySelector('canvas')
       const cx = canvas.getContext('2d')
       canvas.width = 320
       canvas.height = 200
-      const scaleFactor = 0.5
-      //console.log(defwax)
 
-      /*const ro = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          entry.target.width = entry.target.clientWidth * scaleFactor
-          entry.target.height = entry.target.clientHeight * scaleFactor
+      const keys = new Map()
+      let zoom = 1.0
+      const velocity = vec2.create()
+      const position = vec2.create()
+
+      function key(e) {
+        keys.set(e.code, e.type === 'keydown')
+      }
+
+      let frameID
+      function frame(time) {
+        if (keys.get('ArrowUp')) {
+          velocity[1] -= 1
+        } else if (keys.get('ArrowDown')) {
+          velocity[1] += 1
         }
-      })
-      ro.observe(canvas)*/
 
-      fme.use(mofRebus, palette)
-      for (const state of stormTrooper.states) {
-        console.log(state)
-        for (const angle of state.angles) {
-          for (const frame of angle.frames) {
-            fme.use(frame.fme, palette)
+        if (keys.get('ArrowLeft')) {
+          velocity[0] -= 1
+        } else if (keys.get('ArrowRight')) {
+          velocity[0] += 1
+        }
+
+        if (keys.get('KeyZ')) {
+          zoom -= 0.1
+        } else if (keys.get('KeyA')) {
+          zoom += 0.1
+        }
+
+        position[0] -= velocity[0]
+        position[1] -= velocity[1]
+
+        velocity[0] *= 0.9
+        velocity[1] *= 0.9
+
+        if (canvas.width !== canvas.clientWidth) {
+          canvas.width = canvas.clientWidth
+        }
+
+        if (canvas.height !== canvas.clientHeight) {
+          canvas.height = canvas.clientHeight
+        }
+
+        cx.clearRect(0, 0, cx.canvas.width, cx.canvas.height)
+
+        cx.save()
+        cx.translate(position[0], position[1])
+
+        for (const sector of currentLevel.sectors) {
+          let mx = 0, my = 0
+          for (const wall of sector.walls) {
+            const [sx, sy] = sector.vertices[wall.left]
+            const [ex, ey] = sector.vertices[wall.right]
+            cx.beginPath()
+            cx.moveTo(sx * zoom, sy * zoom)
+            cx.lineTo(ex * zoom, ey * zoom)
+            if (wall.adjoin !== -1) {
+              cx.strokeStyle = '#ff0'
+            } else {
+              cx.strokeStyle = '#fff'
+            }
+            mx += ex * zoom
+            my += ey * zoom
+            cx.stroke()
+          }
+
+          mx /= sector.walls.length
+          my /= sector.walls.length
+
+          if (sector.name) {
+            cx.font = '16px monospace'
+            cx.textAlign = 'center'
+            cx.textBaseline = 'middle'
+            cx.fillStyle = '#fff'
+            cx.fillText(sector.name, mx, my)
+          }
+
+          for (const [x, y] of sector.vertices) {
+            const zx = x * zoom
+            const zy = y * zoom
+            cx.beginPath()
+            cx.moveTo(zx, zy - 2)
+            cx.lineTo(zx + 2, zy)
+            cx.lineTo(zx, zy + 2)
+            cx.lineTo(zx - 2, zy)
+            cx.fillStyle = '#0ff'
+            cx.fill()
           }
         }
-      }
-      bm.use(statusLeft, palette)
-      bm.use(statusRight, palette)
 
-      let currentState = 0
-      let currentAngle = 0
-      let currentFrame = 0
+        for (const object of currentLevel.objects) {
+          const { x, z: y, className, yaw } = object
+          const zx = x * zoom
+          const zy = y * zoom
+          if (className === 'sprite') {
+            cx.strokeStyle = '#f00'
+            cx.fillStyle = '#f00'
+          } else if (className === 'spirit') {
+            cx.strokeStyle = '#f0f'
+            cx.fillStyle = '#f0f'
+          } else if (className === 'frame') {
+            cx.strokeStyle = '#ff0'
+            cx.fillStyle = '#ff0'
+          } else if (className === '3d') {
+            cx.strokeStyle = '#00f'
+            cx.fillStyle = '#00f'
+          }
+          cx.beginPath()
+          cx.moveTo(zx, zy - 2)
+          cx.lineTo(zx + 2, zy)
+          cx.lineTo(zx, zy + 2)
+          cx.lineTo(zx - 2, zy)
+          cx.closePath()
+          cx.stroke()
 
-      fnt.use(font, palette)
-      function frame() {
-        cx.clearRect(0,0,cx.canvas.width,cx.canvas.height)
-        fme.render(mofRebus, cx, 200, 100)
-        const flooredCurrentFrame = Math.floor(currentFrame)
-        fme.render(stormTrooper.states[currentState].angles[currentAngle].frames[flooredCurrentFrame].fme, cx, 100, 100)
+          cx.beginPath()
+          cx.moveTo(zx, zy)
+          cx.lineTo(zx + Math.cos(yaw * Math.PI / 180) * 4, zy + Math.sin(yaw * Math.PI / 180) * 4)
+          cx.stroke()
 
-        currentFrame += stormTrooper.states[currentState].frameRate / 60
-        if (currentFrame >= stormTrooper.states[currentState].angles[currentAngle].frames.length) {
-          currentFrame = 0
-          currentAngle++
-          if (currentAngle >= stormTrooper.states[currentState].angles.length) {
-            currentAngle = 0
-            currentState++
-            if (currentState >= stormTrooper.states.length) {
-              currentState = 0
-              currentFrame = 0
-              currentAngle = 0
+          cx.font = '16px monospace'
+          cx.textAlign = 'center'
+          cx.textBaseline = 'middle'
+          let accuY = 16
+          if (object.typeName) {
+            cx.fillText(object.typeName, zx, zy + accuY)
+            accuY += 16
+          }
+          if (object.logics) {
+            for (const logic of object.logics) {
+              cx.fillText(logic, zx, zy + accuY)
+              accuY += 16
             }
           }
         }
 
-        bm.render(statusLeft, cx, 0, canvas.height - statusRight.height)
-        bm.render(statusRight, cx, canvas.width - statusRight.width, canvas.height - statusRight.height)
-        fnt.render(font, cx, 'Hola mundo!\nAdios Mundo!', 0, 16)
-        fnt.render(font, cx, `${currentState} ${currentAngle} ${flooredCurrentFrame}`, 0, 32)
-        window.requestAnimationFrame(frame)
+        cx.restore()
+
+        cx.font = '16px monospace'
+        cx.textAlign = 'left'
+        cx.textBaseline = 'top'
+        cx.fillStyle = '#fff'
+        cx.fillText(`${frameID} ${time}`, 0, 0)
+
+        frameID = window.requestAnimationFrame(frame)
       }
-      window.requestAnimationFrame(frame)
+
+      function start() {
+        window.addEventListener('keyup', key)
+        window.addEventListener('keydown', key)
+        frameID = window.requestAnimationFrame(frame)
+      }
+
+      start()
     })
 }
