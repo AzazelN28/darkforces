@@ -29,7 +29,9 @@
       }
 
       canvas {
-        border: 1px solid #fff;
+        position: fixed;
+        top: 0;
+        left: 0;
         max-width: 100vw;
         max-height: 62.5vw;
         width: 100%;
@@ -39,7 +41,8 @@
     </style>
   </head>
   <body>
-    <canvas></canvas>
+    <canvas id="engine"></canvas>
+    <canvas id="debug"></canvas>
     <script src="./index.js"></script>
   </body>
 </html>

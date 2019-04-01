@@ -1,0 +1,20 @@
+digraph {
+
+  Keyboard -> Input
+  Gamepad -> Input
+  Mouse -> Input
+  Touch -> Input
+
+  Music -> Audio
+  Sound -> Audio
+
+  Input -> Game
+
+  Logic -> Game
+
+  Render -> Game
+
+  Audio -> Game
+
+
+}

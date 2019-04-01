@@ -11,6 +11,55 @@ import wax from 'files/wax'
 import voc from 'files/voc'
 
 /**
+ * Builds a vertexbuffer wall
+ * @param {*} sector
+ * @param {*} wall
+ */
+function buildWall(sector, wall) {
+  const sy = sector.ceilingAltitude
+  const ey = sector.floorAltitude
+  const [sx, sz] = sector.vertices[wall.left]
+  const [ex, ez] = sector.vertices[wall.right]
+  return [
+    sx, sy, sz,
+    ex, sy, ez,
+    ex, ey, ez,
+    sx, ey, sz
+  ]
+}
+
+/**
+ * Builds a vertexbuffer plane
+ * @param {*} sector
+ * @param {*} altitude
+ */
+function buildPlane(sector, altitude) {
+  const vertices = []
+  const y = altitude
+  for (const wall of sector.walls) {
+    const [x, z] = sector.vertices[wall.left]
+    vertices.push(x, y, z)
+  }
+  return vertices
+}
+
+/**
+ * Builds a vertexbuffer plane floor
+ * @param {Sector} sector
+ */
+function buildFloor(sector) {
+  return buildPlane(sector, sector.floorAltitude)
+}
+
+/**
+ * Builds a vertexbuffer plane ceiling
+ * @param {Sector} sector
+ */
+function buildCeiling(sector) {
+  return buildPlane(sector, sector.ceilingAltitude)
+}
+
+/**
  * Loads a complete level
  * @param {Map<string, DirectoryEntry>} entries
  * @param {string} name
@@ -20,6 +69,26 @@ export function load(entries, name) {
   const upperCaseName = name.toUpperCase()
   console.log(`Loading ${upperCaseName}.LEV`)
   const basic = lev.parseEntry(entries.get(`${upperCaseName}.LEV`))
+  const sectors = basic.sectors.map((sector) => {
+    return {
+      ...sector,
+      wallColor: new Float32Array([Math.random(), Math.random(), Math.random()]),
+      planeColor: new Float32Array([Math.random(), Math.random(), Math.random()]),
+      geometries: {
+        planes: [
+          buildFloor(sector),
+          buildCeiling(sector)
+        ],
+        walls: sector.walls.filter((wall) => {
+          return wall.adjoin === -1
+        }).map((wall) => buildWall(sector, wall))
+      },
+      buffered: {
+        planes: null,
+        walls: null
+      }
+    }
+  })
   console.log(`Loading palette ${basic.palette}`)
   const palette = pal.parseEntry(entries.get(basic.palette))
   /*
@@ -72,7 +141,7 @@ export function load(entries, name) {
   const goals = gol.parseEntry(entries.get(`${upperCaseName}.GOL`))
   console.log(goals)
   return {
-    sectors: basic.sectors,
+    sectors: sectors,
     objects: objects.objects,
     palette,
     textures,
