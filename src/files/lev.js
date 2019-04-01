@@ -150,7 +150,7 @@ export function parse(dataView, start, size) {
     },
     'sector-vertex': (line) => {
       const [x, z] = parseLine('  X: {d} Z: {d}', line)
-      sector.vertices.push([x, z])
+      sector.vertices.push([-x, z])
       if (sector.vertices.length === sector.vertexCount) {
         return 'sector-wall-count'
       }

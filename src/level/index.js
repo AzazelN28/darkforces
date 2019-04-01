@@ -29,6 +29,46 @@ function buildWall(sector, wall) {
 }
 
 /**
+ * Builds an adjoined wall
+ * @param {*} sector
+ * @param {*} wall
+ */
+function buildAdjoinedTopWall(sector, adjoined, wall) {
+  const a = sector
+  const b = adjoined
+  const sy = a.ceilingAltitude
+  const ey = b.ceilingAltitude
+  const [sx, sz] = sector.vertices[wall.left]
+  const [ex, ez] = sector.vertices[wall.right]
+  return [
+    sx, sy, sz,
+    ex, sy, ez,
+    ex, ey, ez,
+    sx, ey, sz
+  ]
+}
+
+/**
+ * Builds an adjoined wall
+ * @param {*} sector
+ * @param {*} wall
+ */
+function buildAdjoinedBottomWall(sector, adjoined, wall) {
+  const a = sector
+  const b = adjoined
+  const sy = a.floorAltitude
+  const ey = b.floorAltitude
+  const [sx, sz] = sector.vertices[wall.left]
+  const [ex, ez] = sector.vertices[wall.right]
+  return [
+    sx, sy, sz,
+    ex, sy, ez,
+    ex, ey, ez,
+    sx, ey, sz
+  ]
+}
+
+/**
  * Builds a vertexbuffer plane
  * @param {*} sector
  * @param {*} altitude
@@ -60,6 +100,34 @@ function buildCeiling(sector) {
 }
 
 /**
+ * Computes the bounding box of a sector
+ * @param {*} sector
+ * @returns {BoundingBox}
+ */
+function computeSectorBoundingBox(sector) {
+  let maxX = Number.MIN_VALUE
+    , minX = Number.MAX_VALUE
+    , maxY = Number.MIN_VALUE
+    , minY = Number.MAX_VALUE
+
+  const minZ = sector.ceilingAltitude
+  const maxZ = sector.floorAltitude
+  for (const wall of sector.walls) {
+    const [sx, sy] = sector.vertices[wall.left]
+    //const [ex, ey] = sector.vertices[wall.right]
+    maxX = Math.max(maxX, sx)
+    minX = Math.min(minX, sx)
+    maxY = Math.max(maxY, sy)
+    minY = Math.min(minY, sy)
+  }
+  return [
+    minX, maxX,
+    minY, maxY,
+    minZ, maxZ
+  ]
+}
+
+/**
  * Loads a complete level
  * @param {Map<string, DirectoryEntry>} entries
  * @param {string} name
@@ -70,23 +138,30 @@ export function load(entries, name) {
   console.log(`Loading ${upperCaseName}.LEV`)
   const basic = lev.parseEntry(entries.get(`${upperCaseName}.LEV`))
   const sectors = basic.sectors.map((sector) => {
+    sector.walls.forEach((wall) => {
+      wall.midGeometry = null
+      wall.midBuffer = null
+      wall.topGeometry = null
+      wall.topBuffer = null
+      wall.bottomGeometry = null
+      wall.bottomBuffer = null
+      if (wall.adjoin < 0) {
+        wall.midGeometry = buildWall(sector, wall)
+      } else {
+        wall.topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
+        wall.bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
+      }
+      return wall
+    })
     return {
       ...sector,
+      boundingBox: computeSectorBoundingBox(sector),
       wallColor: new Float32Array([Math.random(), Math.random(), Math.random()]),
       planeColor: new Float32Array([Math.random(), Math.random(), Math.random()]),
-      geometries: {
-        planes: [
-          buildFloor(sector),
-          buildCeiling(sector)
-        ],
-        walls: sector.walls.filter((wall) => {
-          return wall.adjoin === -1
-        }).map((wall) => buildWall(sector, wall))
-      },
-      buffered: {
-        planes: null,
-        walls: null
-      }
+      floorGeometry: buildFloor(sector),
+      floorBuffer: null,
+      ceilingGeometry: buildCeiling(sector),
+      ceilingBuffer: null
     }
   })
   console.log(`Loading palette ${basic.palette}`)
@@ -105,7 +180,7 @@ export function load(entries, name) {
     if (!entries.has(current)) {
       console.warn(`Cannot load ${current}`)
     } else {
-      return bm.parseEntry(entries.get(current))
+      return bm.use(bm.parseEntry(entries.get(current)), palette)
     }
   })
   console.log(`Loading ${upperCaseName}.O`)

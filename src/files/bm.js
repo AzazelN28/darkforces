@@ -109,6 +109,7 @@ export function parse(dataView, start, size) { // eslint-disable-line
         imageData: new ImageData(subWidth, subHeight)
       })
     }
+    console.log('BM Animated')
     return {
       isAnimated: true,
       width,
@@ -129,6 +130,7 @@ export function parse(dataView, start, size) { // eslint-disable-line
       const offset = dataView.getUint32(32 + (index * 4), true)
       offsets.push(start + offset)
     }
+    console.log('BM Compressed')
     return {
       isAnimated: false,
       width,
@@ -143,6 +145,7 @@ export function parse(dataView, start, size) { // eslint-disable-line
       imageData: new ImageData(width, height),
     }
   }
+  console.log('BM Uncompressed')
   return {
     isAnimated: false,
     width,

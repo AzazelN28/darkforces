@@ -1,6 +1,7 @@
 import gob from 'files/gob'
 import lfd from 'files/lfd'
 import level from 'level'
+import bm from 'files/bm'
 import sound from 'audio/sound'
 import { vec3, mat4 } from 'gl-matrix'
 
@@ -46,6 +47,8 @@ document.onclick = () => {
       const isRenderDebugEnabled = 1
       const keys = new Map()
       let zoom = 1.0
+      let currentTexture = 0
+      let currentLayer = 1
       const velocity = vec3.create()
       const position = vec3.create()
       const direction = vec3.create()
@@ -56,20 +59,30 @@ document.onclick = () => {
       const projectionView = mat4.create()
       const projectionViewModel = mat4.create()
 
+      function createBuffer(gl, geometry) {
+        const buffer = gl.createBuffer()
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(geometry), gl.STATIC_DRAW)
+        return buffer
+      }
+
       const vertexShader = gl.createShader(gl.VERTEX_SHADER)
       gl.shaderSource(vertexShader, `
         precision highp float;
 
         attribute vec3 a_coords;
+
         uniform mat4 u_mvp;
         uniform vec3 u_color;
 
         varying vec3 v_color;
+        varying vec3 v_coords;
 
         void main() {
           vec4 position = u_mvp * vec4(a_coords, 1.0);
           gl_Position = vec4(position.x, -position.y, position.z, position.w);
           v_color = u_color;
+          v_coords = a_coords;
         }
       `)
       gl.compileShader(vertexShader)
@@ -81,9 +94,20 @@ document.onclick = () => {
       gl.shaderSource(fragmentShader, `
         precision highp float;
 
+        uniform sampler2D u_sampler;
+        uniform int u_isWall;
+        uniform vec2 u_wallSign;
+        uniform float u_mix;
+
         varying vec3 v_color;
+        varying vec3 v_coords;
+
         void main() {
-          gl_FragColor = vec4(v_color,1.0);
+          //gl_FragColor = vec4(v_color,1.0);
+          vec4 color = (u_isWall == 1)
+            ? mix(vec4(v_color, 1.0), texture2D(u_sampler, v_coords.xy / 8.0), u_mix)
+            : mix(vec4(v_color, 1.0), texture2D(u_sampler, v_coords.xz / 8.0), u_mix);
+          gl_FragColor = vec4(color);
         }
       `)
       gl.compileShader(fragmentShader)
@@ -101,20 +125,34 @@ document.onclick = () => {
 
       console.log('Uploading buffers...')
       for (const sector of currentLevel.sectors) {
-        sector.buffered.walls = sector.geometries.walls.map((wall) => {
-          const buffer = gl.createBuffer()
-          gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
-          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(wall), gl.STATIC_DRAW)
-          return buffer
-        })
-        sector.buffered.planes = sector.geometries.planes.map((plane) => {
-          const buffer = gl.createBuffer()
-          gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
-          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(plane), gl.STATIC_DRAW)
-          return buffer
+        sector.floorBuffer = createBuffer(gl, sector.floorGeometry)
+        sector.ceilingBuffer = createBuffer(gl, sector.ceilingGeometry)
+        sector.walls.forEach((wall) => {
+          if (wall.midGeometry) {
+            wall.midBuffer = createBuffer(gl, wall.midGeometry)
+          } else {
+            wall.topBuffer = createBuffer(gl, wall.topGeometry)
+            wall.bottomBuffer = createBuffer(gl, wall.bottomGeometry)
+          }
         })
       }
       console.log('All buffers uploaded')
+
+      console.log('Uploading textures...')
+      for (const texture of currentLevel.textures) {
+        if (texture && texture.imageData) {
+          console.log(texture.width, texture.height)
+          const tex = gl.createTexture()
+          gl.bindTexture(gl.TEXTURE_2D, tex)
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, texture.imageData)
+          texture.texture = tex
+        }
+      }
+      console.log('All textures uploaded')
 
       function key(e) {
         keys.set(e.code, e.type === 'keydown')
@@ -140,6 +178,22 @@ document.onclick = () => {
           vec3.add(velocity, velocity, up)
         } else if (keys.get('KeyE') || keys.get('PageDown')) {
           vec3.add(velocity, velocity, down)
+        }
+
+        if (keys.get('BracketLeft')) {
+          if (currentTexture > 0) {
+            currentTexture--
+          } else {
+            currentTexture = currentLevel.textures.length - 1
+          }
+          console.log(currentTexture)
+        } else if (keys.get('BracketRight')) {
+          if (currentTexture < currentLevel.textures.length - 1) {
+            currentTexture++
+          } else {
+            currentTexture = 0
+          }
+          console.log(currentTexture)
         }
 
         if (keys.get('KeyR')) {
@@ -202,25 +256,73 @@ document.onclick = () => {
         gl.uniformMatrix4fv(gl.getUniformLocation(program, 'u_mvp'), false, projectionView)
 
         for (const sector of currentLevel.sectors) {
-          gl.uniform3fv(gl.getUniformLocation(program, 'u_color'), sector.wallColor)
-          for (const wall of sector.buffered.walls) {
-            gl.bindBuffer(gl.ARRAY_BUFFER, wall)
-            gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
-            gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 0, 0)
-            gl.drawArrays(gl.TRIANGLE_FAN, 0, gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_SIZE) / 12)
-          }
+          if (sector.layer === currentLayer) {
+          //const [minX, maxX, minY, maxY, minZ, maxZ] = sector.boundingBox
+          /*if (position[0] > minX && position[0] < maxX
+           && position[1] > minY && position[1] < maxY
+           && position[2] > minZ && position[2] < maxZ) {*/
+            gl.uniform1f(gl.getUniformLocation(program, 'u_mix'), 1)
+            gl.uniform1i(gl.getUniformLocation(program, 'u_isWall'), 0)
+            gl.activeTexture(gl.TEXTURE0)
+            gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.floorTexture.index].texture)
+            gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
 
-          gl.uniform3fv(gl.getUniformLocation(program, 'u_color'), sector.planeColor)
-          for (const plane of sector.buffered.planes) {
-            gl.bindBuffer(gl.ARRAY_BUFFER, plane)
+            gl.uniform3fv(gl.getUniformLocation(program, 'u_color'), sector.planeColor)
+            gl.bindBuffer(gl.ARRAY_BUFFER, sector.floorBuffer)
             gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
             gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 0, 0)
             gl.drawArrays(gl.TRIANGLE_FAN, 0, gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_SIZE) / 12)
+
+            gl.activeTexture(gl.TEXTURE0)
+            gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.ceilingTexture.index].texture)
+            gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
+
+            gl.uniform3fv(gl.getUniformLocation(program, 'u_color'), sector.planeColor)
+            gl.bindBuffer(gl.ARRAY_BUFFER, sector.ceilingBuffer)
+            gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
+            gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 0, 0)
+            gl.drawArrays(gl.TRIANGLE_FAN, 0, gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_SIZE) / 12)
+
+            gl.uniform3fv(gl.getUniformLocation(program, 'u_color'), sector.wallColor)
+            gl.uniform1i(gl.getUniformLocation(program, 'u_isWall'), 1)
+            for (const wall of sector.walls) {
+              gl.uniform2f(gl.getUniformLocation(program, 'u_wallSign'), wall.signX, wall.signY)
+              if (wall.midBuffer) {
+                gl.activeTexture(gl.TEXTURE0)
+                gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.mid].texture)
+                gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, wall.midBuffer)
+                gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
+                gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 0, 0)
+                gl.drawArrays(gl.TRIANGLE_FAN, 0, gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_SIZE) / 12)
+              } else {
+                gl.activeTexture(gl.TEXTURE0)
+                gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.top].texture)
+                gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, wall.topBuffer)
+                gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
+                gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 0, 0)
+                gl.drawArrays(gl.TRIANGLE_FAN, 0, gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_SIZE) / 12)
+
+                gl.activeTexture(gl.TEXTURE0)
+                gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.bottom].texture)
+                gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, wall.bottomBuffer)
+                gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
+                gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 0, 0)
+                gl.drawArrays(gl.TRIANGLE_FAN, 0, gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_SIZE) / 12)
+              }
+            }
           }
         }
       }
 
       function renderDebug(time) {
+        cx.putImageData(currentLevel.textures[currentTexture].imageData, 0, 0)
+
         if (!isRenderDebugEnabled) {
           return
         }
@@ -241,6 +343,7 @@ document.onclick = () => {
         for (const sector of currentLevel.sectors) {
           let mx = 0
             , my = 0
+
           for (const wall of sector.walls) {
             const [sx, sy] = sector.vertices[wall.left]
             const [ex, ey] = sector.vertices[wall.right]
