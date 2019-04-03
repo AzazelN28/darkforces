@@ -1,4 +1,4 @@
-import dataViewUtils from 'utils/dataViewUtils'
+import dataViewUtils from 'utils/dataView'
 import { createParseEntry } from 'utils/parse'
 import { parseContent, parseLine } from 'utils/parse'
 
