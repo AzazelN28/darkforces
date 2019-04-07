@@ -16,6 +16,8 @@ export function parse(dataView, start, size) {
       id: null,
       name: null,
       ambient: null,
+      floor: null,
+      ceiling: null,
       floorTexture: null,
       floorAltitude: null,
       ceilingTexture: null,
@@ -106,6 +108,14 @@ export function parse(dataView, start, size) {
     },
     'sector-floor-texture': (line) => {
       const [index, x, y, flags] = parseLine(' FLOOR TEXTURE {n} {d} {d} {n}', line)
+      if (sector.floor === null) {
+        sector.floor = {
+          texture: {
+            index, x, y, flags
+          },
+          altitude: null
+        }
+      }
       sector.floorTexture = {
         index, x, y, flags
       }
@@ -113,11 +123,20 @@ export function parse(dataView, start, size) {
     },
     'sector-floor-altitude': (line) => {
       const [altitude] = parseLine(' FLOOR ALTITUDE {d}', line)
+      sector.floor.altitude = altitude
       sector.floorAltitude = altitude
       return 'sector-ceiling-texture'
     },
     'sector-ceiling-texture': (line) => {
       const [index, x, y, flags] = parseLine(' CEILING TEXTURE {n} {d} {d} {n}', line)
+      if (sector.ceiling === null) {
+        sector.ceiling = {
+          texture: {
+            index, x, y, flags
+          },
+          altitude: null
+        }
+      }
       sector.ceilingTexture = {
         index, x, y, flags
       }
@@ -125,6 +144,7 @@ export function parse(dataView, start, size) {
     },
     'sector-ceiling-altitude': (line) => {
       const [altitude] = parseLine(' CEILING ALTITUDE {d}', line)
+      sector.ceiling.altitude = altitude
       sector.ceilingAltitude = altitude
       return 'sector-second-altitude'
     },
@@ -134,8 +154,8 @@ export function parse(dataView, start, size) {
       return 'sector-flags'
     },
     'sector-flags': (line) => {
-      const [x,y,z] = parseLine(' FLAGS {n} {n} {n}', line)
-      sector.flags = [x,y,z]
+      const [x, y, z] = parseLine(' FLAGS {n} {n} {n}', line)
+      sector.flags = [x, y, z]
       return 'sector-layer'
     },
     'sector-layer': (line) => {
@@ -162,19 +182,34 @@ export function parse(dataView, start, size) {
       return 'sector-wall'
     },
     'sector-wall': (line) => {
-      const [left,right,mid,midx,midy,midr,top,topx,topy,topr,bottom,bottomx,bottomy,bottomr,sign,signx,signy,adjoin,mirror,walk,u,v,w,light] = parseLine(' WALL LEFT: {i} RIGHT: {i} MID: {i} {d} {d} {i} TOP: {i} {d} {d} {i} BOT: {i} {d} {d} {i} SIGN: {d} {d} {d} ADJOIN: {i} MIRROR: {i} WALK: {i} FLAGS: {n} {n} {n} LIGHT: {n}', line)
+      const [left,right,midt,midx,midy,midr,topt,topx,topy,topr,bottomt,bottomx,bottomy,bottomr,sign,signx,signy,adjoin,mirror,walk,u,v,w,light] = parseLine(' WALL LEFT: {i} RIGHT: {i} MID: {i} {d} {d} {i} TOP: {i} {d} {d} {i} BOT: {i} {d} {d} {i} SIGN: {d} {d} {d} ADJOIN: {i} MIRROR: {i} WALK: {i} FLAGS: {n} {n} {n} LIGHT: {n}', line)
       sector.walls.push({
         left,
         right,
-        mid,
+        mid: {
+          texture: midt,
+          offset: [midx, midy],
+          rotation: midr
+        },
+        midt,
         midx,
         midy,
         midr,
-        top,
+        top: {
+          texture: topt,
+          offset: [topx, topy],
+          rotation: topr
+        },
+        topt,
         topx,
         topy,
         topr,
-        bottom,
+        bottom: {
+          texture: bottomt,
+          offset: [bottomx, bottomy],
+          rotation: bottomr
+        },
+        bottomt,
         bottomx,
         bottomy,
         bottomr,

@@ -12,73 +12,93 @@ import voc from 'files/voc'
 
 /**
  * Builds a vertexbuffer wall
- * @param {*} sector
+ * @param {Sector} sector
  * @param {*} wall
+ * @param {number} sy
+ * @param {number} ey
+ * @param {number} [offsetU=0]
+ * @param {number} [offsetV=0]
+ * @returns {Array<number>}
  */
-function buildWall(sector, wall) {
-  const sy = sector.ceilingAltitude
-  const ey = sector.floorAltitude
+function buildWall(sector, wall, sy, ey, offsetU = 0, offsetV = 0) {
   const [sx, sz] = sector.vertices[wall.left]
   const [ex, ez] = sector.vertices[wall.right]
+  const u = Math.hypot(ex - sx, ez - sz)
+  const v = Math.abs(ey - sy)
+  const [su, sv] = [0, 0]
+  const [eu, ev] = [u + offsetU, v + offsetV]
   return [
-    sx, sy, sz,
-    ex, sy, ez,
-    ex, ey, ez,
-    sx, ey, sz
+    sx, sy, sz, su, sv,
+    ex, sy, ez, eu, sv,
+    ex, ey, ez, eu, ev,
+    sx, ey, sz, su, ev
   ]
 }
 
 /**
+ * Buids a mid wall
+ * @param {Sector} sector
+ * @param {Wall} wall
+ * @returns {Array<number>}
+ */
+function buildMidWall(sector, wall) {
+  return buildWall(sector, wall, sector.ceilingAltitude, sector.floorAltitude, sector.midx, sector.midy)
+}
+
+/**
  * Builds an adjoined wall
- * @param {*} sector
- * @param {*} wall
+ * @param {Sector} sector
+ * @param {Wall} wall
+ * @returns {Array<number>}
  */
 function buildAdjoinedTopWall(sector, adjoined, wall) {
   const a = sector
   const b = adjoined
-  const sy = a.ceilingAltitude
-  const ey = b.ceilingAltitude
-  const [sx, sz] = sector.vertices[wall.left]
-  const [ex, ez] = sector.vertices[wall.right]
-  return [
-    sx, sy, sz,
-    ex, sy, ez,
-    ex, ey, ez,
-    sx, ey, sz
-  ]
+  const sy = Math.min(a.ceilingAltitude, b.ceilingAltitude)
+  const ey = Math.max(a.ceilingAltitude, b.ceilingAltitude)
+  return buildWall(sector, wall, sy, ey, sector.topx, sector.topy)
 }
 
 /**
  * Builds an adjoined wall
- * @param {*} sector
- * @param {*} wall
+ * @param {Sector} sector
+ * @param {Wall} wall
+ * @returns {Array<number>}
  */
 function buildAdjoinedBottomWall(sector, adjoined, wall) {
   const a = sector
   const b = adjoined
-  const sy = a.floorAltitude
-  const ey = b.floorAltitude
-  const [sx, sz] = sector.vertices[wall.left]
-  const [ex, ez] = sector.vertices[wall.right]
-  return [
-    sx, sy, sz,
-    ex, sy, ez,
-    ex, ey, ez,
-    sx, ey, sz
-  ]
+  const sy = Math.min(a.floorAltitude, b.floorAltitude)
+  const ey = Math.max(a.floorAltitude, b.floorAltitude)
+  return buildWall(sector, wall, sy, ey, sector.bottomx, sector.bottomy)
 }
 
 /**
  * Builds a vertexbuffer plane
- * @param {*} sector
- * @param {*} altitude
+ * @param {Sector} sector
+ * @param {number} altitude
+ * @returns {Array<number>}
  */
-function buildPlane(sector, altitude) {
+function buildPlaneForward(sector, altitude) {
   const vertices = []
   const y = altitude
-  for (const wall of sector.walls) {
+  for (let index = 0; index < sector.walls.length; index++) {
+    const wall = sector.walls[index]
     const [x, z] = sector.vertices[wall.left]
-    vertices.push(x, y, z)
+    const [u, v] = sector.vertices[wall.left]
+    vertices.push(x, y, z, u, v)
+  }
+  return vertices
+}
+
+function buildPlaneBackward(sector, altitude) {
+  const vertices = []
+  const y = altitude
+  for (let index = sector.walls.length - 1; index >= 0; index--) {
+    const wall = sector.walls[index]
+    const [x, z] = sector.vertices[wall.left]
+    const [u, v] = sector.vertices[wall.left]
+    vertices.push(x, y, z, u, v)
   }
   return vertices
 }
@@ -86,17 +106,19 @@ function buildPlane(sector, altitude) {
 /**
  * Builds a vertexbuffer plane floor
  * @param {Sector} sector
+ * @returns {Array<number>}
  */
 function buildFloor(sector) {
-  return buildPlane(sector, sector.floorAltitude)
+  return buildPlaneForward(sector, sector.floorAltitude)
 }
 
 /**
  * Builds a vertexbuffer plane ceiling
  * @param {Sector} sector
+ * @returns {Array<number>}
  */
 function buildCeiling(sector) {
-  return buildPlane(sector, sector.ceilingAltitude)
+  return buildPlaneBackward(sector, sector.ceilingAltitude)
 }
 
 /**
@@ -109,16 +131,14 @@ function computeSectorBoundingBox(sector) {
     , minX = Number.MAX_VALUE
     , maxY = Number.MIN_VALUE
     , minY = Number.MAX_VALUE
-
   const minZ = sector.ceilingAltitude
   const maxZ = sector.floorAltitude
   for (const wall of sector.walls) {
-    const [sx, sy] = sector.vertices[wall.left]
-    //const [ex, ey] = sector.vertices[wall.right]
-    maxX = Math.max(maxX, sx)
-    minX = Math.min(minX, sx)
-    maxY = Math.max(maxY, sy)
-    minY = Math.min(minY, sy)
+    const [x, y] = sector.vertices[wall.left]
+    maxX = Math.max(maxX, x)
+    minX = Math.min(minX, x)
+    maxY = Math.max(maxY, y)
+    minY = Math.min(minY, y)
   }
   return [
     minX, maxX,
@@ -138,6 +158,12 @@ export function load(entries, name) {
   console.log(`Loading ${upperCaseName}.LEV`)
   const basic = lev.parseEntry(entries.get(`${upperCaseName}.LEV`))
   const sectors = basic.sectors.map((sector) => {
+    if (sector.ceilingTexture.index === 34) {
+      console.log('SKY', sector)
+    } else {
+      console.log('REG', sector)
+    }
+
     sector.walls.forEach((wall) => {
       wall.midGeometry = null
       wall.midBuffer = null
@@ -146,7 +172,7 @@ export function load(entries, name) {
       wall.bottomGeometry = null
       wall.bottomBuffer = null
       if (wall.adjoin < 0) {
-        wall.midGeometry = buildWall(sector, wall)
+        wall.midGeometry = buildMidWall(sector, wall)
       } else {
         wall.topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
         wall.bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
