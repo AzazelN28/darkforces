@@ -44,11 +44,9 @@ document.onclick = () => {
       const backward = vec3.fromValues(0,0,1)
       const strafeLeft = vec3.fromValues(-1, 0, 0)
       const strafeRight = vec3.fromValues(1, 0, 0)
-      const isRenderDebugEnabled = 0
       const keys = new Map()
-      let zoom = 1.0
-      let currentTexture = 0
-      let currentLayer = 1
+      let zoom = 2.0
+      let currentLayer = 0
       const velocity = vec3.create()
       const position = vec3.create()
       const direction = vec3.create()
@@ -72,17 +70,12 @@ document.onclick = () => {
 
         attribute vec3 a_coords;
         attribute vec2 a_texcoords;
-
         uniform mat4 u_mvp;
-        uniform vec3 u_color;
-
-        varying vec3 v_color;
         varying vec2 v_texcoords;
 
         void main() {
           vec4 position = u_mvp * vec4(a_coords, 1.0);
           gl_Position = vec4(position.x, -position.y, position.z, position.w);
-          v_color = u_color;
           v_texcoords = a_texcoords;
         }
       `)
@@ -96,19 +89,11 @@ document.onclick = () => {
         precision highp float;
 
         uniform sampler2D u_sampler;
-        uniform int u_isWall;
-        uniform vec2 u_wallSign;
-        uniform float u_mix;
-
-        varying vec3 v_color;
+        uniform vec2 u_texbase;
         varying vec2 v_texcoords;
 
         void main() {
-          //gl_FragColor = vec4(v_color,1.0);
-          vec4 color = (u_isWall == 1)
-            ? mix(vec4(v_color, 1.0), texture2D(u_sampler, v_texcoords.xy / 8.0), u_mix)
-            : mix(vec4(v_color, 1.0), texture2D(u_sampler, v_texcoords.xy / 8.0), u_mix);
-          gl_FragColor = vec4(color);
+          gl_FragColor = texture2D(u_sampler, v_texcoords / u_texbase);
         }
       `)
       gl.compileShader(fragmentShader)
@@ -182,17 +167,25 @@ document.onclick = () => {
         }
 
         if (keys.get('BracketLeft')) {
+          if (zoom > 0) {
+            zoom--
+          }
+          console.log(zoom)
+        } else if (keys.get('BracketRight')) {
+          if (zoom < 9) {
+            zoom++
+          }
+          console.log(zoom)
+        }
+
+        if (keys.get('KeyZ')) {
           if (currentLayer > 0) {
             currentLayer--
           }
-          console.log(currentLayer)
-        } else if (keys.get('BracketRight')) {
+        } else if (keys.get('KeyX')) {
           if (currentLayer < 9) {
             currentLayer++
-          } else {
-            currentLayer = 0
           }
-          console.log(currentLayer)
         }
 
         if (keys.get('KeyR')) {
@@ -254,18 +247,23 @@ document.onclick = () => {
         gl.enable(gl.DEPTH_TEST)
         gl.useProgram(program)
 
-        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'u_mvp'), false, projectionView)
+        const TEXTURE_BASE = 8
 
+        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'u_mvp'), false, projectionView)
         for (const sector of currentLevel.sectors) {
           if (currentLevel.textures[sector.floorTexture.index]) {
-            gl.uniform1f(gl.getUniformLocation(program, 'u_mix'), 1)
-            gl.uniform1i(gl.getUniformLocation(program, 'u_isWall'), 0)
+            gl.uniform2f(
+              gl.getUniformLocation(program, 'u_texbase'),
+              currentLevel.textures[sector.floorTexture.index].width / TEXTURE_BASE,
+              currentLevel.textures[sector.floorTexture.index].height / TEXTURE_BASE
+            )
+
             gl.activeTexture(gl.TEXTURE0)
             gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.floorTexture.index].texture)
             gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
 
-            gl.uniform3fv(gl.getUniformLocation(program, 'u_color'), sector.planeColor)
             gl.bindBuffer(gl.ARRAY_BUFFER, sector.floorBuffer)
+
 
             gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
             gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
@@ -277,11 +275,16 @@ document.onclick = () => {
           }
 
           if (currentLevel.textures[sector.ceilingTexture.index] && !(sector.flags[0] & 0x01 === 0x01)) {
+            gl.uniform2f(
+              gl.getUniformLocation(program, 'u_texbase'),
+              currentLevel.textures[sector.ceilingTexture.index].width / TEXTURE_BASE,
+              currentLevel.textures[sector.ceilingTexture.index].height / TEXTURE_BASE
+            )
+
             gl.activeTexture(gl.TEXTURE0)
             gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.ceilingTexture.index].texture)
             gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
 
-            gl.uniform3fv(gl.getUniformLocation(program, 'u_color'), sector.planeColor)
             gl.bindBuffer(gl.ARRAY_BUFFER, sector.ceilingBuffer)
 
             gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
@@ -293,12 +296,16 @@ document.onclick = () => {
             gl.drawArrays(gl.TRIANGLE_FAN, 0, gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_SIZE) / 20)
           }
 
-          gl.uniform3fv(gl.getUniformLocation(program, 'u_color'), sector.wallColor)
-          gl.uniform1i(gl.getUniformLocation(program, 'u_isWall'), 1)
           for (const wall of sector.walls) {
-            gl.uniform2f(gl.getUniformLocation(program, 'u_wallSign'), wall.signX, wall.signY)
             if (wall.midBuffer) {
               if (currentLevel.textures[wall.midt]) {
+
+                gl.uniform2f(
+                  gl.getUniformLocation(program, 'u_texbase'),
+                  currentLevel.textures[wall.midt].width / TEXTURE_BASE,
+                  currentLevel.textures[wall.midt].height / TEXTURE_BASE
+                )
+
                 gl.activeTexture(gl.TEXTURE0)
                 gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.midt].texture)
                 gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
@@ -315,6 +322,13 @@ document.onclick = () => {
               }
             } else {
               if (currentLevel.textures[wall.topt]) {
+
+                gl.uniform2f(
+                  gl.getUniformLocation(program, 'u_texbase'),
+                  currentLevel.textures[wall.topt].width / TEXTURE_BASE,
+                  currentLevel.textures[wall.topt].height / TEXTURE_BASE
+                )
+
                 gl.activeTexture(gl.TEXTURE0)
                 gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.topt].texture)
                 gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
@@ -331,6 +345,13 @@ document.onclick = () => {
               }
 
               if (currentLevel.textures[wall.bottomt]) {
+
+                gl.uniform2f(
+                  gl.getUniformLocation(program, 'u_texbase'),
+                  currentLevel.textures[wall.bottomt].width / TEXTURE_BASE,
+                  currentLevel.textures[wall.bottomt].height / TEXTURE_BASE
+                )
+
                 gl.activeTexture(gl.TEXTURE0)
                 gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.bottomt].texture)
                 gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
@@ -359,16 +380,31 @@ document.onclick = () => {
           cx.canvas.height = cx.canvas.clientHeight
         }
 
-        if (!isRenderDebugEnabled) {
-          return
-        }
-
         cx.clearRect(0, 0, cx.canvas.width, cx.canvas.height)
 
+        const scx = cx.canvas.width >> 1
+        const scy = cx.canvas.height >> 1
+
         cx.save()
-        cx.translate(position[0], position[2])
+        cx.translate(scx, scy)
+        cx.rotate(-direction[1] + Math.PI * 0.5)
+        cx.beginPath()
+        cx.moveTo(8, 0)
+        cx.lineTo(-8, 0)
+        cx.lineTo(0, 4)
+        cx.lineTo(0, -4)
+        cx.lineTo(-8, 0)
+        cx.strokeStyle = '#f0f'
+        cx.stroke()
+        cx.restore()
+
+        cx.save()
+        cx.translate(scx - position[0] * zoom, scy - position[2] * zoom)
 
         for (const sector of currentLevel.sectors) {
+          if (sector.layer !== currentLayer)
+            continue
+
           let mx = 0
             , my = 0
 
@@ -379,9 +415,9 @@ document.onclick = () => {
             cx.moveTo(sx * zoom, sy * zoom)
             cx.lineTo(ex * zoom, ey * zoom)
             if (wall.adjoin !== -1) {
-              cx.strokeStyle = '#ff0'
+              cx.strokeStyle = '#070'
             } else {
-              cx.strokeStyle = '#fff'
+              cx.strokeStyle = '#0f0'
             }
             mx += ex * zoom
             my += ey * zoom
@@ -412,11 +448,6 @@ document.onclick = () => {
           }
         }
 
-        if (isRenderDebugEnabled < 2) {
-          cx.restore()
-          return
-        }
-
         for (const object of currentLevel.objects) {
           const {
             x,
@@ -440,16 +471,16 @@ document.onclick = () => {
             cx.fillStyle = '#00f'
           }
           cx.beginPath()
-          cx.moveTo(zx, zy - 2)
-          cx.lineTo(zx + 2, zy)
-          cx.lineTo(zx, zy + 2)
-          cx.lineTo(zx - 2, zy)
+          cx.moveTo(-zx, zy - 2)
+          cx.lineTo(-zx + 2, zy)
+          cx.lineTo(-zx, zy + 2)
+          cx.lineTo(-zx - 2, zy)
           cx.closePath()
           cx.stroke()
 
           cx.beginPath()
-          cx.moveTo(zx, zy)
-          cx.lineTo(zx + Math.cos(yaw * Math.PI / 180) * 4, zy + Math.sin(yaw * Math.PI / 180) * 4)
+          cx.moveTo(-zx, zy)
+          cx.lineTo(-zx + Math.cos(yaw * Math.PI / 180) * 4, zy + Math.sin(yaw * Math.PI / 180) * 4)
           cx.stroke()
 
           cx.font = '16px monospace'
@@ -457,12 +488,12 @@ document.onclick = () => {
           cx.textBaseline = 'middle'
           let accuY = 16
           if (object.typeName) {
-            cx.fillText(object.typeName, zx, zy + accuY)
+            cx.fillText(object.typeName, -zx, zy + accuY)
             accuY += 16
           }
           if (object.logics) {
             for (const logic of object.logics) {
-              cx.fillText(logic, zx, zy + accuY)
+              cx.fillText(logic, -zx, zy + accuY)
               accuY += 16
             }
           }
@@ -475,6 +506,11 @@ document.onclick = () => {
         cx.textBaseline = 'top'
         cx.fillStyle = '#fff'
         cx.fillText(`${frameID} ${time}`, 0, 0)
+        cx.fillText('KEYS', 0, 16)
+        cx.fillText('[] - Zoom', 0, 32)
+        cx.fillText('W,A,S,D - Move', 0, 48)
+        cx.fillText('Q,E - Up/Down', 0, 64)
+        cx.fillText('Z,X - Up/Down layers', 0, 80)
       }
 
       let frameID
@@ -482,7 +518,7 @@ document.onclick = () => {
         input(time)
         update(time)
         render(time)
-        //renderDebug(time)
+        renderDebug(time)
 
         frameID = window.requestAnimationFrame(frame)
       }

@@ -15,7 +15,7 @@ export function parse(dataView, start, size) {
     return {
       id: null,
       name: null,
-      ambient: null,
+      light: null,
       floor: null,
       ceiling: null,
       floorTexture: null,
@@ -103,7 +103,7 @@ export function parse(dataView, start, size) {
     },
     'sector-ambient': (line) => {
       const [ambient] = parseLine(' AMBIENT {n}', line)
-      sector.ambient = ambient
+      sector.light = ambient
       return 'sector-floor-texture'
     },
     'sector-floor-texture': (line) => {

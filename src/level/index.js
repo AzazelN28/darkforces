@@ -79,26 +79,26 @@ function buildAdjoinedBottomWall(sector, adjoined, wall) {
  * @param {number} altitude
  * @returns {Array<number>}
  */
-function buildPlaneForward(sector, altitude) {
+function buildPlaneForward(sector, altitude, offsetU = 0, offsetV = 0) {
   const vertices = []
   const y = altitude
   for (let index = 0; index < sector.walls.length; index++) {
     const wall = sector.walls[index]
     const [x, z] = sector.vertices[wall.left]
     const [u, v] = sector.vertices[wall.left]
-    vertices.push(x, y, z, u, v)
+    vertices.push(x, y, z, u + offsetU, v + offsetV)
   }
   return vertices
 }
 
-function buildPlaneBackward(sector, altitude) {
+function buildPlaneBackward(sector, altitude, offsetU = 0, offsetV = 0) {
   const vertices = []
   const y = altitude
   for (let index = sector.walls.length - 1; index >= 0; index--) {
     const wall = sector.walls[index]
     const [x, z] = sector.vertices[wall.left]
     const [u, v] = sector.vertices[wall.left]
-    vertices.push(x, y, z, u, v)
+    vertices.push(x, y, z, u + offsetU, v + offsetV)
   }
   return vertices
 }
@@ -109,7 +109,7 @@ function buildPlaneBackward(sector, altitude) {
  * @returns {Array<number>}
  */
 function buildFloor(sector) {
-  return buildPlaneForward(sector, sector.floorAltitude)
+  return buildPlaneForward(sector, sector.floorAltitude, sector.floorTexture.x, sector.floorTexture.y)
 }
 
 /**
@@ -118,7 +118,7 @@ function buildFloor(sector) {
  * @returns {Array<number>}
  */
 function buildCeiling(sector) {
-  return buildPlaneBackward(sector, sector.ceilingAltitude)
+  return buildPlaneBackward(sector, sector.ceilingAltitude, sector.ceilingTexture.x, sector.ceilingTexture.y)
 }
 
 /**
