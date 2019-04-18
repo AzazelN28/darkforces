@@ -1,7 +1,15 @@
 import { vec3, mat4 } from 'gl-matrix'
+
+
 import level from './level'
+
+// File Manager
 import FileManager from './files/FileManager'
+
+// WebGL imports
 import { createTexture2D } from './gl/texture'
+import { createVertexBuffer } from './gl/buffer'
+import { createProgramFromSource } from './gl/program'
 
 const fm = new FileManager()
 fm.on('ready', async (fm) => {
@@ -40,15 +48,7 @@ fm.on('ready', async (fm) => {
   const projectionView = mat4.create()
   const projectionViewModel = mat4.create()
 
-  function createBuffer(gl, geometry) {
-    const buffer = gl.createBuffer()
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(geometry), gl.STATIC_DRAW)
-    return buffer
-  }
-
-  const vertexShader = gl.createShader(gl.VERTEX_SHADER)
-  gl.shaderSource(vertexShader, `
+  const program = createProgramFromSource(gl, `
     precision highp float;
 
     attribute vec3 a_coords;
@@ -61,14 +61,7 @@ fm.on('ready', async (fm) => {
       gl_Position = vec4(position.x, -position.y, position.z, position.w);
       v_texcoords = a_texcoords;
     }
-  `)
-  gl.compileShader(vertexShader)
-  if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
-    throw new Error(gl.getShaderInfoLog(vertexShader))
-  }
-
-  const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)
-  gl.shaderSource(fragmentShader, `
+  `, `
     precision highp float;
 
     uniform sampler2D u_sampler;
@@ -79,29 +72,17 @@ fm.on('ready', async (fm) => {
       gl_FragColor = texture2D(u_sampler, v_texcoords / u_texbase);
     }
   `)
-  gl.compileShader(fragmentShader)
-  if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
-    throw new Error(gl.getShaderInfoLog(fragmentShader))
-  }
-
-  const program = gl.createProgram()
-  gl.attachShader(program, vertexShader)
-  gl.attachShader(program, fragmentShader)
-  gl.linkProgram(program)
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    throw new Error(gl.getProgramInfoLog(program))
-  }
 
   console.log('Uploading buffers...')
   for (const sector of currentLevel.sectors) {
-    sector.floorBuffer = createBuffer(gl, sector.floorGeometry)
-    sector.ceilingBuffer = createBuffer(gl, sector.ceilingGeometry)
+    sector.floorBuffer = createVertexBuffer(gl, new Float32Array(sector.floorGeometry))
+    sector.ceilingBuffer = createVertexBuffer(gl, new Float32Array(sector.ceilingGeometry))
     sector.walls.forEach((wall) => {
       if (wall.midGeometry) {
-        wall.midBuffer = createBuffer(gl, wall.midGeometry)
+        wall.midBuffer = createVertexBuffer(gl, new Float32Array(wall.midGeometry))
       } else {
-        wall.topBuffer = createBuffer(gl, wall.topGeometry)
-        wall.bottomBuffer = createBuffer(gl, wall.bottomGeometry)
+        wall.topBuffer = createVertexBuffer(gl, new Float32Array(wall.topGeometry))
+        wall.bottomBuffer = createVertexBuffer(gl, new Float32Array(wall.bottomGeometry))
       }
     })
   }
@@ -240,14 +221,13 @@ fm.on('ready', async (fm) => {
 
         gl.bindBuffer(gl.ARRAY_BUFFER, sector.floorBuffer)
 
-
         gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
         gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
 
         gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_texcoords'))
         gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
-        gl.drawArrays(gl.TRIANGLE_FAN, 0, gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_SIZE) / 20)
+        gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.floorGeometry.length / 5)
       }
 
       if (currentLevel.textures[sector.ceilingTexture.index] && !(sector.flags[0] & 0x01 === 0x01)) {
@@ -269,7 +249,7 @@ fm.on('ready', async (fm) => {
         gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_texcoords'))
         gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
-        gl.drawArrays(gl.TRIANGLE_FAN, 0, gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_SIZE) / 20)
+        gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.ceilingGeometry.length / 5)
       }
 
       for (const wall of sector.walls) {

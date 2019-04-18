@@ -1,20 +1,7 @@
-import lev from 'files/lev'
-import o from 'files/o'
-import inf from 'files/inf'
-import gol from 'files/gol'
-import pal from 'files/pal'
-import fme from 'files/fme'
-import gmd from 'files/gmd'
-import o3d from 'files/3do'
-import bm from 'files/bm'
-import wax from 'files/wax'
-import voc from 'files/voc'
-import FileManager from '../files/FileManager';
-
 /**
  * Builds a vertexbuffer wall
  * @param {Sector} sector
- * @param {*} wall
+ * @param {Wall} wall
  * @param {number} sy
  * @param {number} ey
  * @param {number} [offsetU=0]
@@ -49,6 +36,7 @@ function buildMidWall(sector, wall) {
 /**
  * Builds an adjoined wall
  * @param {Sector} sector
+ * @param {Sector} adjoined
  * @param {Wall} wall
  * @returns {Array<number>}
  */
@@ -63,6 +51,7 @@ function buildAdjoinedTopWall(sector, adjoined, wall) {
 /**
  * Builds an adjoined wall
  * @param {Sector} sector
+ * @param {Sector} adjoined
  * @param {Wall} wall
  * @returns {Array<number>}
  */
@@ -78,6 +67,8 @@ function buildAdjoinedBottomWall(sector, adjoined, wall) {
  * Builds a vertexbuffer plane
  * @param {Sector} sector
  * @param {number} altitude
+ * @param {number} [offsetU=0]
+ * @param {number} [offsetV=0]
  * @returns {Array<number>}
  */
 function buildPlaneForward(sector, altitude, offsetU = 0, offsetV = 0) {
@@ -92,6 +83,13 @@ function buildPlaneForward(sector, altitude, offsetU = 0, offsetV = 0) {
   return vertices
 }
 
+/**
+ * Builds a vertex buffer plane in reverse order
+ * @param {Sector} sector
+ * @param {number} altitude
+ * @param {number} [offsetU=0]
+ * @param {number} [offsetV=0]
+ */
 function buildPlaneBackward(sector, altitude, offsetU = 0, offsetV = 0) {
   const vertices = []
   const y = altitude
@@ -124,7 +122,7 @@ function buildCeiling(sector) {
 
 /**
  * Computes the bounding box of a sector
- * @param {*} sector
+ * @param {Sector} sector
  * @returns {BoundingBox}
  */
 function computeSectorBoundingBox(sector) {
@@ -150,8 +148,9 @@ function computeSectorBoundingBox(sector) {
 
 /**
  * Loads a level
- * @param {FileManager} fm - FileManager.
- * @param {string} name - Level name.
+ * @param {FileManager} fm - File manager
+ * @param {string} name - Level name
+ * @returns {Promise<Level|Error>}
  */
 export async function load(fm, name) {
   const upperCaseName = name.toUpperCase()
@@ -165,8 +164,12 @@ export async function load(fm, name) {
       wall.topBuffer = null
       wall.bottomGeometry = null
       wall.bottomBuffer = null
+
+      // If the wall it's not connected to another sector
+      // then we should build a complete wall.
       if (wall.adjoin < 0) {
         wall.midGeometry = buildMidWall(sector, wall)
+      // Otherwise we build the top part of the wall and the bottom part of the wall.
       } else {
         wall.topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
         wall.bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
@@ -199,7 +202,6 @@ export async function load(fm, name) {
     console.log(`Loading texture ${current} (${index + 1}/${list.length})`)
     return fm.fetch(current)
   }))
-  debugger
   console.log(textures)
   console.log(`Loading ${upperCaseName}.O`)
   const objects = await fm.fetch(`${upperCaseName}.O`)
@@ -231,7 +233,7 @@ export async function load(fm, name) {
   const goals = await fm.fetch(`${upperCaseName}.GOL`)
   console.log(goals)
   return {
-    sectors: sectors,
+    sectors,
     objects: objects.objects,
     palette,
     textures,

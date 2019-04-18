@@ -34,5 +34,6 @@ export function createProgramFromSource(gl, vertexShaderSource, fragmentShaderSo
 }
 
 export default {
-  createProgram
+  createProgram,
+  createProgramFromSource
 }

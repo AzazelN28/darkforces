@@ -6,7 +6,7 @@
  * @param {number} [usage=gl.STATIC_DRAW] - Tipo de dibujado
  * @returns {WebGLBuffer}
  */
-export function createBuffer(gl, data, target = gl.ELEMENT_ARRAY_BUFFER, usage = gl.STATIC_DRAW) {
+export function createBuffer(gl, data, target = gl.ARRAY_BUFFER, usage = gl.STATIC_DRAW) {
   const buffer = gl.createBuffer()
   gl.bindBuffer(target, buffer)
   gl.bufferData(target, data, usage)
