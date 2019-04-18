@@ -1,5 +1,5 @@
 import earcut from 'earcut'
-import { from } from '../utils/range'
+import { from, isBetween } from '../utils/range'
 
 /**
  * Builds a vertexbuffer wall
@@ -33,7 +33,7 @@ function buildWall(sector, wall, sy, ey, offsetU = 0, offsetV = 0) {
  * @returns {Array<number>}
  */
 function buildMidWall(sector, wall) {
-  return buildWall(sector, wall, sector.ceilingAltitude, sector.floorAltitude, sector.midx, sector.midy)
+  return buildWall(sector, wall, sector.ceiling.altitude, sector.floor.altitude, sector.midx, sector.midy)
 }
 
 /**
@@ -46,8 +46,8 @@ function buildMidWall(sector, wall) {
 function buildAdjoinedTopWall(sector, adjoined, wall) {
   const a = sector
   const b = adjoined
-  const sy = Math.min(a.ceilingAltitude, b.ceilingAltitude)
-  const ey = Math.max(a.ceilingAltitude, b.ceilingAltitude)
+  const sy = Math.min(a.ceiling.altitude, b.ceiling.altitude)
+  const ey = Math.max(a.ceiling.altitude, b.ceiling.altitude)
   return buildWall(sector, wall, sy, ey, sector.topx, sector.topy)
 }
 
@@ -61,8 +61,8 @@ function buildAdjoinedTopWall(sector, adjoined, wall) {
 function buildAdjoinedBottomWall(sector, adjoined, wall) {
   const a = sector
   const b = adjoined
-  const sy = Math.min(a.floorAltitude, b.floorAltitude)
-  const ey = Math.max(a.floorAltitude, b.floorAltitude)
+  const sy = Math.min(a.floor.altitude, b.floor.altitude)
+  const ey = Math.max(a.floor.altitude, b.floor.altitude)
   return buildWall(sector, wall, sy, ey, sector.bottomx, sector.bottomy)
 }
 
@@ -111,8 +111,8 @@ function buildPlaneBackward(sector, altitude, offsetU = 0, offsetV = 0) {
  * @returns {Array<number>}
  */
 function buildFloor(sector) {
-  //return buildPlaneBackward(sector, sector.floorAltitude, sector.floorTexture.x, sector.floorTexture.y)
-  return buildPlaneForward(sector, sector.floorAltitude, sector.floorTexture.x, sector.floorTexture.y)
+  //return buildPlaneBackward(sector, sector.floor.altitude, sector.floor.texture.x, sector.floor.texture.y)
+  return buildPlaneForward(sector, sector.floor.altitude, sector.floor.texture.x, sector.floor.texture.y)
 }
 
 /**
@@ -121,8 +121,8 @@ function buildFloor(sector) {
  * @returns {Array<number>}
  */
 function buildCeiling(sector) {
-  return buildPlaneBackward(sector, sector.ceilingAltitude, sector.ceilingTexture.x, sector.ceilingTexture.y)
-  //return buildPlaneForward(sector, sector.ceilingAltitude, sector.ceilingTexture.x, sector.ceilingTexture.y)
+  return buildPlaneBackward(sector, sector.ceiling.altitude, sector.ceiling.texture.x, sector.ceiling.texture.y)
+  //return buildPlaneForward(sector, sector.ceiling.altitude, sector.ceiling.texture.x, sector.ceiling.texture.y)
 }
 
 /**
@@ -165,17 +165,17 @@ function triangulate(sector) {
  */
 function computeSectorBoundingBox(sector) {
   let maxX = Number.MIN_VALUE
-    , minX = Number.MAX_VALUE
-    , maxY = Number.MIN_VALUE
-    , minY = Number.MAX_VALUE
-  const minZ = sector.ceilingAltitude
-  const maxZ = sector.floorAltitude
+  let minX = Number.MAX_VALUE
+  let maxZ = Number.MIN_VALUE
+  let minZ = Number.MAX_VALUE
+  const minY = sector.ceiling.altitude
+  const maxY = sector.floor.altitude
   for (const wall of sector.walls) {
     const [x, y] = sector.vertices[wall.left]
     maxX = Math.max(maxX, x)
     minX = Math.min(minX, x)
-    maxY = Math.max(maxY, y)
-    minY = Math.min(minY, y)
+    maxZ = Math.max(maxZ, y)
+    minZ = Math.min(minZ, y)
   }
   return [
     minX, maxX,
@@ -208,6 +208,26 @@ function getLight(light) {
     return 1.0
   }
   return from(light, -32, 31)
+}
+
+/**
+ * Returns the current sector
+ * @param {vec3} position
+ * @param {Array<Sector>} sectors
+ * @returns {Sector|null}
+ */
+export function getCurrentSector([x, y, z], sectors) {
+  // TODO: This should give better results by using walls instead
+  // of just using bounding boxes.
+  for (const sector of sectors) {
+    const [minX, maxX, minY, maxY, minZ, maxZ] = sector.boundingBox
+    if (isBetween(x, minX, maxX)
+     && isBetween(y, minY, maxY)
+     && isBetween(z, minZ, maxZ)) {
+      return sector
+    }
+  }
+  return null
 }
 
 /**

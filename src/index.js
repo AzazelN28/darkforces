@@ -1,6 +1,6 @@
 import { vec3, mat4 } from 'gl-matrix'
 
-import level from './level'
+import level, { getCurrentSector } from './level'
 
 // File Manager
 import FileManager from './files/FileManager'
@@ -46,8 +46,9 @@ fm.on('ready', async (fm) => {
   const strafeLeft = vec3.fromValues(-1, 0, 0)
   const strafeRight = vec3.fromValues(1, 0, 0)
   const keys = new Map()
-  let zoom = 2.0
+  let zoom = 4.0
   let currentLayer = 0
+  let currentSector = null
   const velocity = vec3.create()
   const position = vec3.create()
   const direction = vec3.create()
@@ -188,6 +189,12 @@ fm.on('ready', async (fm) => {
 
     vec3.add(position, position, velocity)
     vec3.scale(velocity, velocity, 0.9)
+
+    currentSector = getCurrentSector(position, currentLevel.sectors)
+    // Change layer automatically to current sector layer.
+    if (currentSector !== null) {
+      currentLayer = currentSector.layer
+    }
   }
 
   let isDirty = false
@@ -240,15 +247,15 @@ fm.on('ready', async (fm) => {
 
     gl.uniformMatrix4fv(gl.getUniformLocation(program, 'u_mvp'), false, projectionView)
     for (const sector of currentLevel.sectors) {
-      if (currentLevel.textures[sector.floorTexture.index]) {
+      if (currentLevel.textures[sector.floor.texture.index]) {
         gl.uniform2f(
           gl.getUniformLocation(program, 'u_texbase'),
-          currentLevel.textures[sector.floorTexture.index].width / TEXTURE_BASE,
-          currentLevel.textures[sector.floorTexture.index].height / TEXTURE_BASE
+          currentLevel.textures[sector.floor.texture.index].width / TEXTURE_BASE,
+          currentLevel.textures[sector.floor.texture.index].height / TEXTURE_BASE
         )
 
         gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.floorTexture.index].texture)
+        gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.floor.texture.index].texture)
         gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
         gl.uniform1f(gl.getUniformLocation(program, 'u_light'), sector.light)
 
@@ -266,15 +273,15 @@ fm.on('ready', async (fm) => {
         gl.drawElements(gl.TRIANGLES, sector.indices.length, gl.UNSIGNED_SHORT, 0)
       }
 
-      if (currentLevel.textures[sector.ceilingTexture.index] && !(sector.flags[0] & 0x01 === 0x01)) {
+      if (currentLevel.textures[sector.ceiling.texture.index] && !(sector.flags[0] & 0x01 === 0x01)) {
         gl.uniform2f(
           gl.getUniformLocation(program, 'u_texbase'),
-          currentLevel.textures[sector.ceilingTexture.index].width / TEXTURE_BASE,
-          currentLevel.textures[sector.ceilingTexture.index].height / TEXTURE_BASE
+          currentLevel.textures[sector.ceiling.texture.index].width / TEXTURE_BASE,
+          currentLevel.textures[sector.ceiling.texture.index].height / TEXTURE_BASE
         )
 
         gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.ceilingTexture.index].texture)
+        gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.ceiling.texture.index].texture)
         gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
         gl.uniform1f(gl.getUniformLocation(program, 'u_light'), sector.light)
 
@@ -371,6 +378,24 @@ fm.on('ready', async (fm) => {
         }
       }
     }
+
+    // TODO: We should draw all the sprites in here, we also need to reorder
+    // all the objects to do the alpha blending.
+    for (const object of currentLevel.objects) {
+      if (object.className === 'sprite') {
+        /*
+        gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
+        gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
+
+        gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_texcoords'))
+        gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
+
+        gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
+        */
+      } else if (object.className === '3d') {
+        // TODO: We should draw the 3D models in here.
+      }
+    }
   }
 
   function renderDebug(time) {
@@ -404,8 +429,9 @@ fm.on('ready', async (fm) => {
     cx.translate(scx - position[0] * zoom, scy - position[2] * zoom)
 
     for (const sector of currentLevel.sectors) {
-      if (sector.layer !== currentLayer)
+      if (sector.layer !== currentLayer) {
         continue
+      }
 
       let mx = 0,
         my = 0
@@ -416,10 +442,18 @@ fm.on('ready', async (fm) => {
         cx.beginPath()
         cx.moveTo(sx * zoom, sy * zoom)
         cx.lineTo(ex * zoom, ey * zoom)
-        if (wall.adjoin !== -1) {
-          cx.strokeStyle = '#070'
+        if (sector === currentSector) {
+          if (wall.adjoin !== -1) {
+            cx.strokeStyle = '#770'
+          } else {
+            cx.strokeStyle = '#ff0'
+          }
         } else {
-          cx.strokeStyle = '#0f0'
+          if (wall.adjoin !== -1) {
+            cx.strokeStyle = '#070'
+          } else {
+            cx.strokeStyle = '#0f0'
+          }
         }
         mx += ex * zoom
         my += ey * zoom
@@ -513,6 +547,14 @@ fm.on('ready', async (fm) => {
     cx.fillText('W,A,S,D - Move', 0, 48)
     cx.fillText('Q,E - Up/Down', 0, 64)
     cx.fillText('Z,X - Up/Down layers', 0, 80)
+
+    if (currentSector !== null) {
+      cx.fillText(`Sector ${currentSector.index} ${currentSector.name} ${currentSector.layer}`, 0, 96)
+      cx.fillText(`- Flags: ${currentSector.flags.join(', ')}`, 0, 112)
+      cx.fillText(`- Light: ${currentSector.light}`, 0, 128)
+      cx.fillText(`- Floor: ${currentSector.floor.altitude} ${currentSector.floor.texture.index} ${currentSector.floor.texture.x} ${currentSector.floor.texture.y} ${currentSector.floor.texture.flags.toString(2)}`, 0, 144)
+      cx.fillText(`- Ceiling: ${currentSector.ceiling.altitude} ${currentSector.ceiling.texture.index} ${currentSector.ceiling.texture.x} ${currentSector.ceiling.texture.y} ${currentSector.ceiling.texture.flags.toString(2)}`, 0, 160)
+    }
   }
 
   let frameID

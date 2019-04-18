@@ -31,8 +31,19 @@ export function to(value, min, max) {
   return min + (max - min) * value
 }
 
+/**
+ * Returns if a value is between a range
+ * @param {number} value
+ * @param {number} min
+ * @param {number} max
+ */
+export function isBetween(value, min, max) {
+  return value > min && value < max
+}
+
 export default {
   clamp,
   from,
-  to
+  to,
+  isBetween
 }

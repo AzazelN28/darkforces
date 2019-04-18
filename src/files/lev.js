@@ -92,8 +92,8 @@ export function parse(dataView, start, size) {
       return 'sector'
     },
     'sector': (line) => {
-      const [id] = parseLine('SECTOR {n}', line)
-      sector.id = id
+      const [index] = parseLine('SECTOR {n}', line)
+      sector.index = index
       return 'sector-name'
     },
     'sector-name': (line) => {
@@ -116,15 +116,11 @@ export function parse(dataView, start, size) {
           altitude: null
         }
       }
-      sector.floorTexture = {
-        index, x, y, flags
-      }
       return 'sector-floor-altitude'
     },
     'sector-floor-altitude': (line) => {
       const [altitude] = parseLine(' FLOOR ALTITUDE {d}', line)
       sector.floor.altitude = altitude
-      sector.floorAltitude = altitude
       return 'sector-ceiling-texture'
     },
     'sector-ceiling-texture': (line) => {
@@ -137,15 +133,11 @@ export function parse(dataView, start, size) {
           altitude: null
         }
       }
-      sector.ceilingTexture = {
-        index, x, y, flags
-      }
       return 'sector-ceiling-altitude'
     },
     'sector-ceiling-altitude': (line) => {
       const [altitude] = parseLine(' CEILING ALTITUDE {d}', line)
       sector.ceiling.altitude = altitude
-      sector.ceilingAltitude = altitude
       return 'sector-second-altitude'
     },
     'sector-second-altitude': (line) => {
