@@ -1,3 +1,6 @@
+import earcut from 'earcut'
+import { from } from '../utils/range'
+
 /**
  * Builds a vertexbuffer wall
  * @param {Sector} sector
@@ -108,6 +111,7 @@ function buildPlaneBackward(sector, altitude, offsetU = 0, offsetV = 0) {
  * @returns {Array<number>}
  */
 function buildFloor(sector) {
+  //return buildPlaneBackward(sector, sector.floorAltitude, sector.floorTexture.x, sector.floorTexture.y)
   return buildPlaneForward(sector, sector.floorAltitude, sector.floorTexture.x, sector.floorTexture.y)
 }
 
@@ -118,6 +122,39 @@ function buildFloor(sector) {
  */
 function buildCeiling(sector) {
   return buildPlaneBackward(sector, sector.ceilingAltitude, sector.ceilingTexture.x, sector.ceilingTexture.y)
+  //return buildPlaneForward(sector, sector.ceilingAltitude, sector.ceilingTexture.x, sector.ceilingTexture.y)
+}
+
+/**
+ * Triangulates a sector using the `earcut` algorithm.
+ * @param {Sector} sector
+ * @returns {Array<number>}
+ */
+function triangulate(sector) {
+  const vertices = []
+  const holes = []
+  let start = null
+  for (const wall of sector.walls) {
+    const [x, y] = sector.vertices[wall.left]
+    // const [ex, ey] = sector.vertices[wall.right]
+    vertices.push(x, y)
+    if (start === null) {
+      start = wall.left
+    } else if (start === wall.right) {
+      holes.push(start)
+      start = null
+    }
+  }
+  if (holes.length > 1) {
+    for (let index = holes.length - 1; index >= 0; index--) {
+      if (holes[index] === 0) {
+        holes.splice(index, 1)
+      }
+    }
+  } else {
+    holes.pop()
+  }
+  return earcut(vertices, holes)
 }
 
 /**
@@ -147,6 +184,18 @@ function computeSectorBoundingBox(sector) {
 }
 
 /**
+ * Returns the real light value.
+ * @param {number} light
+ * @returns {number}
+ */
+function getLight(light) {
+  if (light > 31) {
+    return 1.0
+  }
+  return from(light, -32, 31)
+}
+
+/**
  * Loads a level
  * @param {FileManager} fm - File manager
  * @param {string} name - Level name
@@ -156,28 +205,38 @@ export async function load(fm, name) {
   const upperCaseName = name.toUpperCase()
   console.log(`Loading ${upperCaseName}.LEV`)
   const basic = await fm.fetch(`${upperCaseName}.LEV`)
+  let maxLight = Number.MIN_VALUE
   const sectors = basic.sectors.map((sector) => {
-    sector.walls.forEach((wall) => {
-      wall.midGeometry = null
-      wall.midBuffer = null
-      wall.topGeometry = null
-      wall.topBuffer = null
-      wall.bottomGeometry = null
-      wall.bottomBuffer = null
-
+    const indices = triangulate(sector)
+    const walls = sector.walls.map((wall) => {
       // If the wall it's not connected to another sector
       // then we should build a complete wall.
+      let midGeometry, topGeometry, bottomGeometry
       if (wall.adjoin < 0) {
-        wall.midGeometry = buildMidWall(sector, wall)
+        midGeometry = buildMidWall(sector, wall)
       // Otherwise we build the top part of the wall and the bottom part of the wall.
       } else {
-        wall.topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
-        wall.bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
+        topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
+        bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
       }
-      return wall
+      maxLight = Math.max(maxLight, wall.light)
+      return {
+        ...wall,
+        light: getLight(wall.light),
+        midGeometry,
+        midBuffer: null,
+        topGeometry,
+        topBuffer: null,
+        bottomGeometry,
+        bottomBuffer: null
+      }
     })
     return {
       ...sector,
+      light: getLight(sector.light),
+      walls,
+      indices,
+      indexBuffer: null,
       boundingBox: computeSectorBoundingBox(sector),
       wallColor: new Float32Array([Math.random(), Math.random(), Math.random()]),
       planeColor: new Float32Array([Math.random(), Math.random(), Math.random()]),
@@ -187,6 +246,7 @@ export async function load(fm, name) {
       ceilingBuffer: null
     }
   })
+  console.log('MaxLight', maxLight)
   console.log(`Loading palette ${basic.palette}`)
   const palette = await fm.fetch(basic.palette)
   /*

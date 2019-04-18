@@ -8,11 +8,17 @@ import FileManager from './files/FileManager'
 
 // WebGL imports
 import { createTexture2D } from './gl/texture'
-import { createVertexBuffer } from './gl/buffer'
+import { createVertexBuffer, createIndexBuffer } from './gl/buffer'
 import { createProgramFromSource } from './gl/program'
+import baseSounds from './audio/sounds'
 
 const fm = new FileManager()
 fm.on('ready', async (fm) => {
+  const sounds = await Promise.all(baseSounds.map((sound, index, list) => {
+    console.log(`Loading sound ${sound} ${index+1}/${list.length}`)
+    return fm.fetch(sound)
+  }))
+  console.log(sounds)
   const currentLevel = await level.load(fm, 'SECBASE')
   console.log(currentLevel)
   const engine = document.querySelector('canvas#engine')
@@ -48,17 +54,24 @@ fm.on('ready', async (fm) => {
   const projectionView = mat4.create()
   const projectionViewModel = mat4.create()
 
+  // Sets the initial position.
+  const { x, y, z } = currentLevel.objects.find((object) => object.className === 'spirit')
+  vec3.set(position, -x, y, z)
+
   const program = createProgramFromSource(gl, `
     precision highp float;
 
     attribute vec3 a_coords;
     attribute vec2 a_texcoords;
     uniform mat4 u_mvp;
+
     varying vec2 v_texcoords;
+    varying float v_depth;
 
     void main() {
       vec4 position = u_mvp * vec4(a_coords, 1.0);
       gl_Position = vec4(position.x, -position.y, position.z, position.w);
+      v_depth = 1.0 - (position.z / 256.0);
       v_texcoords = a_texcoords;
     }
   `, `
@@ -66,15 +79,20 @@ fm.on('ready', async (fm) => {
 
     uniform sampler2D u_sampler;
     uniform vec2 u_texbase;
+    uniform float u_light;
+
     varying vec2 v_texcoords;
+    varying float v_depth;
 
     void main() {
-      gl_FragColor = texture2D(u_sampler, v_texcoords / u_texbase);
+      // Calculates pixel color by using wall/sector light and depth.
+      gl_FragColor = texture2D(u_sampler, v_texcoords / u_texbase) * u_light * v_depth;
     }
   `)
 
   console.log('Uploading buffers...')
   for (const sector of currentLevel.sectors) {
+    sector.indexBuffer = createIndexBuffer(gl, new Uint16Array(sector.indices))
     sector.floorBuffer = createVertexBuffer(gl, new Float32Array(sector.floorGeometry))
     sector.ceilingBuffer = createVertexBuffer(gl, new Float32Array(sector.ceilingGeometry))
     sector.walls.forEach((wall) => {
@@ -123,16 +141,15 @@ fm.on('ready', async (fm) => {
       vec3.add(velocity, velocity, down)
     }
 
+    // TODO: Set a max/min zoom level
     if (keys.get('BracketLeft')) {
       if (zoom > 0) {
         zoom--
       }
-      console.log(zoom)
     } else if (keys.get('BracketRight')) {
       if (zoom < 9) {
         zoom++
       }
-      console.log(zoom)
     }
 
     if (keys.get('KeyZ')) {
@@ -199,9 +216,9 @@ fm.on('ready', async (fm) => {
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-    gl.enable(gl.CULL_FACE)
-    gl.cullFace(gl.FRONT)
+    gl.disable(gl.CULL_FACE)
     gl.enable(gl.DEPTH_TEST)
+
     gl.useProgram(program)
 
     const TEXTURE_BASE = 8
@@ -218,6 +235,7 @@ fm.on('ready', async (fm) => {
         gl.activeTexture(gl.TEXTURE0)
         gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.floorTexture.index].texture)
         gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
+        gl.uniform1f(gl.getUniformLocation(program, 'u_light'), sector.light)
 
         gl.bindBuffer(gl.ARRAY_BUFFER, sector.floorBuffer)
 
@@ -227,7 +245,10 @@ fm.on('ready', async (fm) => {
         gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_texcoords'))
         gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
-        gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.floorGeometry.length / 5)
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sector.indexBuffer)
+
+        // gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.floorGeometry.length / 5)
+        gl.drawElements(gl.TRIANGLES, sector.indices.length, gl.UNSIGNED_SHORT, 0)
       }
 
       if (currentLevel.textures[sector.ceilingTexture.index] && !(sector.flags[0] & 0x01 === 0x01)) {
@@ -240,6 +261,7 @@ fm.on('ready', async (fm) => {
         gl.activeTexture(gl.TEXTURE0)
         gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.ceilingTexture.index].texture)
         gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
+        gl.uniform1f(gl.getUniformLocation(program, 'u_light'), sector.light)
 
         gl.bindBuffer(gl.ARRAY_BUFFER, sector.ceilingBuffer)
 
@@ -249,8 +271,14 @@ fm.on('ready', async (fm) => {
         gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_texcoords'))
         gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
-        gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.ceilingGeometry.length / 5)
+        // gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.ceilingGeometry.length / 5)
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sector.indexBuffer)
+
+        gl.drawElements(gl.TRIANGLES, sector.indices.length, gl.UNSIGNED_SHORT, 0)
       }
+
+      gl.enable(gl.CULL_FACE)
+      gl.cullFace(gl.FRONT)
 
       for (const wall of sector.walls) {
         if (wall.midBuffer) {
@@ -265,6 +293,7 @@ fm.on('ready', async (fm) => {
             gl.activeTexture(gl.TEXTURE0)
             gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.midt].texture)
             gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
+            gl.uniform1f(gl.getUniformLocation(program, 'u_light'), wall.light)
 
             gl.bindBuffer(gl.ARRAY_BUFFER, wall.midBuffer)
 
@@ -288,6 +317,7 @@ fm.on('ready', async (fm) => {
             gl.activeTexture(gl.TEXTURE0)
             gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.topt].texture)
             gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
+            gl.uniform1f(gl.getUniformLocation(program, 'u_light'), wall.light)
 
             gl.bindBuffer(gl.ARRAY_BUFFER, wall.topBuffer)
 
@@ -311,6 +341,7 @@ fm.on('ready', async (fm) => {
             gl.activeTexture(gl.TEXTURE0)
             gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.bottomt].texture)
             gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
+            gl.uniform1f(gl.getUniformLocation(program, 'u_light'), wall.light)
 
             gl.bindBuffer(gl.ARRAY_BUFFER, wall.bottomBuffer)
 
