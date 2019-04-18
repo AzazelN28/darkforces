@@ -201,7 +201,7 @@ export function use(bitmap, palette) {
 /**
  * Renders a .BM bitmap
  * @param {Bitmap} bitmap
- * @param {number} cx
+ * @param {CanvasRenderingContext2D} cx - Context
  * @param {number} x
  * @param {number} y
  */

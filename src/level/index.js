@@ -9,6 +9,7 @@ import o3d from 'files/3do'
 import bm from 'files/bm'
 import wax from 'files/wax'
 import voc from 'files/voc'
+import FileManager from '../files/FileManager';
 
 /**
  * Builds a vertexbuffer wall
@@ -148,22 +149,15 @@ function computeSectorBoundingBox(sector) {
 }
 
 /**
- * Loads a complete level
- * @param {Map<string, DirectoryEntry>} entries
- * @param {string} name
- * @returns {Level}
+ * Loads a level
+ * @param {FileManager} fm - FileManager.
+ * @param {string} name - Level name.
  */
-export function load(entries, name) {
+export async function load(fm, name) {
   const upperCaseName = name.toUpperCase()
   console.log(`Loading ${upperCaseName}.LEV`)
-  const basic = lev.parseEntry(entries.get(`${upperCaseName}.LEV`))
+  const basic = await fm.fetch(`${upperCaseName}.LEV`)
   const sectors = basic.sectors.map((sector) => {
-    if (sector.ceilingTexture.index === 34) {
-      console.log('SKY', sector)
-    } else {
-      console.log('REG', sector)
-    }
-
     sector.walls.forEach((wall) => {
       wall.midGeometry = null
       wall.midBuffer = null
@@ -191,55 +185,50 @@ export function load(entries, name) {
     }
   })
   console.log(`Loading palette ${basic.palette}`)
-  const palette = pal.parseEntry(entries.get(basic.palette))
+  const palette = await fm.fetch(basic.palette)
   /*
   console.log(`Loading music ${basic.music}`)
-  if (!entries.has(basic.music)) {
+  if (!fm.fetch(basic.music)) {
     console.warn(`Cannot load ${basic.music}`)
   } else {
-    const music = gmd.parseEntry(entries.get(basic.music))
+    const music = gmd.parseEntry(fm.fetch(basic.music))
   }
   */
   console.log(`Loading textures ${basic.textureCount}`)
-  const textures = basic.textures.map((current, index, list) => {
-    console.log(`Loading texture ${current} (${index}/${list.length})`)
-    if (!entries.has(current)) {
-      console.warn(`Cannot load ${current}`)
-    } else {
-      return bm.use(bm.parseEntry(entries.get(current)), palette)
-    }
-  })
+  const textures = await Promise.all(basic.textures.map((current, index, list) => {
+    console.log(`Loading texture ${current} (${index + 1}/${list.length})`)
+    return fm.fetch(current)
+  }))
+  debugger
+  console.log(textures)
   console.log(`Loading ${upperCaseName}.O`)
-  const objects = o.parseEntry(entries.get(`${upperCaseName}.O`))
+  const objects = await fm.fetch(`${upperCaseName}.O`)
+  console.log(objects)
   console.log(`Loading meshes ${objects.podCount}`)
-  const meshes = objects.pods.map((current) => {
+  const meshes = await Promise.all(objects.pods.map((current) => {
     console.log(`Loading mesh ${current}`)
-    if (!entries.has(current)) {
-      console.warn(`Cannot load ${current}`)
-    } else {
-      return o3d.parseEntry(entries.get(current))
-    }
-  })
+    return fm.fetch(current)
+  }))
   console.log(`Loading frames ${objects.frameCount}`)
-  const frames = objects.frames.map((current) => {
+  const frames = await Promise.all(objects.frames.map((current) => {
     console.log(`Loading frame ${current}`)
-    return fme.parseEntry(entries.get(current))
-  })
+    return fm.fetch(current)
+  }))
   console.log(`Loading sprites ${objects.spriteCount}`)
-  const sprites = objects.sprites.map((current) => {
+  const sprites = await Promise.all(objects.sprites.map((current) => {
     console.log(`Loading sprite ${current}`)
-    return wax.parseEntry(entries.get(current))
-  })
+    return fm.fetch(current)
+  }))
   console.log(`Loading sounds ${objects.soundCount}`)
-  const sounds = objects.sounds.map((current) => {
+  const sounds = await Promise.all(objects.sounds.map((current) => {
     console.log(`Loading sound ${current}`)
-    return voc.parseEntry(entries.get(current))
-  })
+    return fm.fetch(current)
+  }))
   console.log(`Loading ${upperCaseName}.INF`)
-  const info = inf.parseEntry(entries.get(`${upperCaseName}.INF`))
+  const info = await fm.fetch(`${upperCaseName}.INF`)
   console.log(info)
   console.log(`Loading ${upperCaseName}.GOL`)
-  const goals = gol.parseEntry(entries.get(`${upperCaseName}.GOL`))
+  const goals = await fm.fetch(`${upperCaseName}.GOL`)
   console.log(goals)
   return {
     sectors: sectors,
