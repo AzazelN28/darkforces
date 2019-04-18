@@ -107,14 +107,14 @@ fm.on('ready', async (fm) => {
   console.log('Uploading buffers...')
   for (const sector of currentLevel.sectors) {
     sector.indexBuffer = createIndexBuffer(gl, new Uint16Array(sector.indices))
-    sector.floorBuffer = createVertexBuffer(gl, new Float32Array(sector.floorGeometry))
-    sector.ceilingBuffer = createVertexBuffer(gl, new Float32Array(sector.ceilingGeometry))
+    sector.floor.buffer = createVertexBuffer(gl, new Float32Array(sector.floor.geometry))
+    sector.ceiling.buffer = createVertexBuffer(gl, new Float32Array(sector.ceiling.geometry))
     sector.walls.forEach((wall) => {
-      if (wall.midGeometry) {
-        wall.midBuffer = createVertexBuffer(gl, new Float32Array(wall.midGeometry))
+      if (wall.mid.geometry) {
+        wall.mid.buffer = createVertexBuffer(gl, new Float32Array(wall.mid.geometry))
       } else {
-        wall.topBuffer = createVertexBuffer(gl, new Float32Array(wall.topGeometry))
-        wall.bottomBuffer = createVertexBuffer(gl, new Float32Array(wall.bottomGeometry))
+        wall.top.buffer = createVertexBuffer(gl, new Float32Array(wall.top.geometry))
+        wall.bottom.buffer = createVertexBuffer(gl, new Float32Array(wall.bottom.geometry))
       }
     })
   }
@@ -259,7 +259,7 @@ fm.on('ready', async (fm) => {
         gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
         gl.uniform1f(gl.getUniformLocation(program, 'u_light'), sector.light)
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, sector.floorBuffer)
+        gl.bindBuffer(gl.ARRAY_BUFFER, sector.floor.buffer)
 
         gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
         gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
@@ -269,7 +269,7 @@ fm.on('ready', async (fm) => {
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sector.indexBuffer)
 
-        // gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.floorGeometry.length / 5)
+        // gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.floor.geometry.length / 5)
         gl.drawElements(gl.TRIANGLES, sector.indices.length, gl.UNSIGNED_SHORT, 0)
       }
 
@@ -285,7 +285,7 @@ fm.on('ready', async (fm) => {
         gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
         gl.uniform1f(gl.getUniformLocation(program, 'u_light'), sector.light)
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, sector.ceilingBuffer)
+        gl.bindBuffer(gl.ARRAY_BUFFER, sector.ceiling.buffer)
 
         gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
         gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
@@ -293,7 +293,7 @@ fm.on('ready', async (fm) => {
         gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_texcoords'))
         gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
-        // gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.ceilingGeometry.length / 5)
+        // gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.ceiling.geometry.length / 5)
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sector.indexBuffer)
 
         gl.drawElements(gl.TRIANGLES, sector.indices.length, gl.UNSIGNED_SHORT, 0)
@@ -303,21 +303,21 @@ fm.on('ready', async (fm) => {
       gl.cullFace(gl.FRONT)
 
       for (const wall of sector.walls) {
-        if (wall.midBuffer) {
-          if (currentLevel.textures[wall.midt]) {
+        if (wall.mid.buffer) {
+          if (currentLevel.textures[wall.mid.texture]) {
 
             gl.uniform2f(
               gl.getUniformLocation(program, 'u_texbase'),
-              currentLevel.textures[wall.midt].width / TEXTURE_BASE,
-              currentLevel.textures[wall.midt].height / TEXTURE_BASE
+              currentLevel.textures[wall.mid.texture].width / TEXTURE_BASE,
+              currentLevel.textures[wall.mid.texture].height / TEXTURE_BASE
             )
 
             gl.activeTexture(gl.TEXTURE0)
-            gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.midt].texture)
+            gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.mid.texture].texture)
             gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
             gl.uniform1f(gl.getUniformLocation(program, 'u_light'), wall.light)
 
-            gl.bindBuffer(gl.ARRAY_BUFFER, wall.midBuffer)
+            gl.bindBuffer(gl.ARRAY_BUFFER, wall.mid.buffer)
 
             gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
             gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
@@ -328,20 +328,20 @@ fm.on('ready', async (fm) => {
             gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
           }
         } else {
-          if (currentLevel.textures[wall.topt]) {
+          if (currentLevel.textures[wall.top.texture]) {
 
             gl.uniform2f(
               gl.getUniformLocation(program, 'u_texbase'),
-              currentLevel.textures[wall.topt].width / TEXTURE_BASE,
-              currentLevel.textures[wall.topt].height / TEXTURE_BASE
+              currentLevel.textures[wall.top.texture].width / TEXTURE_BASE,
+              currentLevel.textures[wall.top.texture].height / TEXTURE_BASE
             )
 
             gl.activeTexture(gl.TEXTURE0)
-            gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.topt].texture)
+            gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.top.texture].texture)
             gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
             gl.uniform1f(gl.getUniformLocation(program, 'u_light'), wall.light)
 
-            gl.bindBuffer(gl.ARRAY_BUFFER, wall.topBuffer)
+            gl.bindBuffer(gl.ARRAY_BUFFER, wall.top.buffer)
 
             gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
             gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
@@ -352,20 +352,20 @@ fm.on('ready', async (fm) => {
             gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
           }
 
-          if (currentLevel.textures[wall.bottomt]) {
+          if (currentLevel.textures[wall.bottom.texture]) {
 
             gl.uniform2f(
               gl.getUniformLocation(program, 'u_texbase'),
-              currentLevel.textures[wall.bottomt].width / TEXTURE_BASE,
-              currentLevel.textures[wall.bottomt].height / TEXTURE_BASE
+              currentLevel.textures[wall.bottom.texture].width / TEXTURE_BASE,
+              currentLevel.textures[wall.bottom.texture].height / TEXTURE_BASE
             )
 
             gl.activeTexture(gl.TEXTURE0)
-            gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.bottomt].texture)
+            gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.bottom.texture].texture)
             gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
             gl.uniform1f(gl.getUniformLocation(program, 'u_light'), wall.light)
 
-            gl.bindBuffer(gl.ARRAY_BUFFER, wall.bottomBuffer)
+            gl.bindBuffer(gl.ARRAY_BUFFER, wall.bottom.buffer)
 
             gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
             gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)

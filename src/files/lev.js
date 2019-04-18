@@ -183,31 +183,21 @@ export function parse(dataView, start, size) {
           offset: [midx, midy],
           rotation: midr
         },
-        midt,
-        midx,
-        midy,
-        midr,
         top: {
           texture: topt,
           offset: [topx, topy],
           rotation: topr
         },
-        topt,
-        topx,
-        topy,
-        topr,
         bottom: {
           texture: bottomt,
           offset: [bottomx, bottomy],
           rotation: bottomr
         },
-        bottomt,
-        bottomx,
-        bottomy,
-        bottomr,
-        sign,
-        signx,
-        signy,
+        sign: {
+          value: sign,
+          x: signx,
+          y: signy,
+        },
         adjoin,
         mirror,
         walk,
