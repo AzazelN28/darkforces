@@ -21,7 +21,6 @@ export function parse(dataView, start, size) {
     , textures = []
     , objects = []
 
-  console.log(content)
   parseContent(content, 'version', {
     'version': (line) => {
       const [version] = parseLine('3DO {v}', line)
@@ -91,7 +90,6 @@ export function parse(dataView, start, size) {
           triangles: []
         }
       }
-      console.log(object)
       return 'object-entry-texture'
     },
     'object-entry-texture': (line) => {
@@ -118,16 +116,14 @@ export function parse(dataView, start, size) {
         const [count] = parseLine('QUADS {n}', line)
         object.numQuads = count
         object.quads = []
-        console.log(object)
         return 'object-entry-quad-entry'
       } else if (isLine('TRIANGLES {n}', line)) {
         const [count] = parseLine('TRIANGLES {n}', line)
         object.numTriangles = count
         object.triangles = []
-        console.log(object)
         return 'object-entry-triangle-entry'
       } else {
-        console.log('cacote', line)
+        throw new Error('Invalid line')
       }
     },
     'object-entry-texture-vertex-count': (line) => {
