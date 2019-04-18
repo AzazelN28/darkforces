@@ -1,5 +1,6 @@
 import gob from './gob'
 import pal from './pal'
+import cmp from './cmp'
 import voc from './voc'
 import lev from './lev'
 import inf from './inf'
@@ -63,6 +64,8 @@ function parseByExtension(entry) {
   case 'PAL':
     state.palette = pal.parseEntry(entry)
     return Promise.resolve(state.palette)
+  case 'CMP':
+    return Promise.resolve(cmp.parseEntry(entry))
   case 'VOC':
     return Promise.resolve(voc.parseEntry(entry))
   case 'VUE':
@@ -107,13 +110,13 @@ self.addEventListener('message', (e) => {
   } else if (type === 'fetch') {
     const { name } = payload
     const entry = state.entries.find((entry) => entry.name === name)
-    if (!entry && name.substr(-3) !== '.BM') {
+    if (!entry && name.substr(-3) !== '.BM' && name.substr(-4) !== '.WAX' && name.substr(-4) !== '.VOC') {
       return self.postMessage({
         id,
         status: 'error',
         error: `Entry ${name} not found`
       })
-    } else if (!entry && name.substr(-3) === '.BM') {
+    } else if (!entry && (name.substr(-3) === '.BM' || name.substr(-4) === '.WAX' || name.substr(-4) === '.VOC')) {
       return self.postMessage({
         id,
         status: 'ok',

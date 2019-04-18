@@ -1,6 +1,5 @@
 import { vec3, mat4 } from 'gl-matrix'
 
-
 import level from './level'
 
 // File Manager
@@ -10,10 +9,14 @@ import FileManager from './files/FileManager'
 import { createTexture2D } from './gl/texture'
 import { createVertexBuffer, createIndexBuffer } from './gl/buffer'
 import { createProgramFromSource } from './gl/program'
+
 import baseSounds from './audio/sounds'
+
+import { degreesToRadians } from './utils/angle'
 
 const fm = new FileManager()
 fm.on('ready', async (fm) => {
+  console.log(await fm.fetch('JEDI.LVL'))
   const sounds = await Promise.all(baseSounds.map((sound, index, list) => {
     console.log(`Loading sound ${sound} ${index+1}/${list.length}`)
     return fm.fetch(sound)
@@ -21,6 +24,7 @@ fm.on('ready', async (fm) => {
   console.log(sounds)
   const currentLevel = await level.load(fm, 'SECBASE')
   console.log(currentLevel)
+  const { fogColor } = currentLevel
   const engine = document.querySelector('canvas#engine')
   const debug = document.querySelector('canvas#debug')
   const gl = engine.getContext('webgl', {
@@ -55,8 +59,10 @@ fm.on('ready', async (fm) => {
   const projectionViewModel = mat4.create()
 
   // Sets the initial position.
-  const { x, y, z } = currentLevel.objects.find((object) => object.className === 'spirit')
+  const { x, y, z, pitch, yaw, roll } = currentLevel.objects.find((object) => object.className === 'spirit')
+  console.log(pitch, yaw, roll)
   vec3.set(position, -x, y, z)
+  vec3.set(direction, degreesToRadians(pitch), degreesToRadians(yaw + 180), degreesToRadians(roll))
 
   const program = createProgramFromSource(gl, `
     precision highp float;
@@ -70,8 +76,10 @@ fm.on('ready', async (fm) => {
 
     void main() {
       vec4 position = u_mvp * vec4(a_coords, 1.0);
+
       gl_Position = vec4(position.x, -position.y, position.z, position.w);
-      v_depth = 1.0 - (position.z / 256.0);
+
+      v_depth = clamp(position.z / 256.0, 0.0, 1.0);
       v_texcoords = a_texcoords;
     }
   `, `
@@ -80,13 +88,18 @@ fm.on('ready', async (fm) => {
     uniform sampler2D u_sampler;
     uniform vec2 u_texbase;
     uniform float u_light;
+    uniform vec4 u_fogColor;
 
     varying vec2 v_texcoords;
     varying float v_depth;
 
     void main() {
       // Calculates pixel color by using wall/sector light and depth.
-      gl_FragColor = texture2D(u_sampler, v_texcoords / u_texbase) * u_light * v_depth;
+      gl_FragColor = mix(
+        texture2D(u_sampler, v_texcoords / u_texbase),
+        u_fogColor / 256.0,
+        v_depth
+      ) * u_light;
     }
   `)
 
@@ -153,7 +166,7 @@ fm.on('ready', async (fm) => {
     }
 
     if (keys.get('KeyZ')) {
-      if (currentLayer > 0) {
+      if (currentLayer > -9) {
         currentLayer--
       }
     } else if (keys.get('KeyX')) {
@@ -220,6 +233,8 @@ fm.on('ready', async (fm) => {
     gl.enable(gl.DEPTH_TEST)
 
     gl.useProgram(program)
+
+    gl.uniform4f(gl.getUniformLocation(program, 'u_fogColor'), ...fogColor)
 
     const TEXTURE_BASE = 8
 
@@ -467,7 +482,7 @@ fm.on('ready', async (fm) => {
 
       cx.beginPath()
       cx.moveTo(-zx, zy)
-      cx.lineTo(-zx + Math.cos(yaw * Math.PI / 180) * 4, zy + Math.sin(yaw * Math.PI / 180) * 4)
+      cx.lineTo(-zx + Math.cos(degreesToRadians(yaw)) * 4, zy + Math.sin(degreesToRadians(yaw)) * 4)
       cx.stroke()
 
       cx.font = '16px monospace'

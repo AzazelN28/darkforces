@@ -131,6 +131,7 @@ function buildCeiling(sector) {
  * @returns {Array<number>}
  */
 function triangulate(sector) {
+  return earcut(sector.vertices.flat())
   const vertices = []
   const holes = []
   let start = null
@@ -184,9 +185,23 @@ function computeSectorBoundingBox(sector) {
 }
 
 /**
+ * Returns the fog color extracted from the color map palette.
+ * @param {Palette} palette
+ * @param {Array<ColorMap>} colorMaps
+ * @return {Color}
+ */
+function getFogColor(palette, colorMaps) {
+  // The first 32 colors of the palette are always the same.
+  const FOG_COLOR_INDEX = 33
+  const start = colorMaps[0][FOG_COLOR_INDEX] * 4
+  const end = (colorMaps[0][FOG_COLOR_INDEX] + 1) * 4
+  return palette.slice(start, end)
+}
+
+/**
  * Returns the real light value.
- * @param {number} light
- * @returns {number}
+ * @param {number} light - Sector/Wall light
+ * @returns {number} A value between 0.5 and 1.0 that represents how much light the sector or wall has
  */
 function getLight(light) {
   if (light > 31) {
@@ -205,7 +220,7 @@ export async function load(fm, name) {
   const upperCaseName = name.toUpperCase()
   console.log(`Loading ${upperCaseName}.LEV`)
   const basic = await fm.fetch(`${upperCaseName}.LEV`)
-  let maxLight = Number.MIN_VALUE
+  console.log(basic)
   const sectors = basic.sectors.map((sector) => {
     const indices = triangulate(sector)
     const walls = sector.walls.map((wall) => {
@@ -219,7 +234,6 @@ export async function load(fm, name) {
         topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
         bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
       }
-      maxLight = Math.max(maxLight, wall.light)
       return {
         ...wall,
         light: getLight(wall.light),
@@ -246,9 +260,44 @@ export async function load(fm, name) {
       ceilingBuffer: null
     }
   })
-  console.log('MaxLight', maxLight)
   console.log(`Loading palette ${basic.palette}`)
   const palette = await fm.fetch(basic.palette)
+  console.log(palette)
+  let message = ''
+  const styles = []
+  for (let index = 0; index < palette.length; index+=4) {
+    const r = palette[index]
+    const g = palette[index + 1]
+    const b = palette[index + 2]
+    const a = palette[index + 3]
+    const style = `background: rgba(${r},${g},${b},${a}); color: rgba(${r},${g},${b},${a})`
+    message += '%c_'
+    if (index % (32 * 4) === 0 && index !== 0) {
+      message += '\n'
+    }
+    styles.push(style)
+  }
+  styles.unshift(message)
+  console.log(...styles)
+  console.log(`Loading color maps ${upperCaseName}.CMP`)
+  const colorMaps = await fm.fetch(`${upperCaseName}.CMP`)
+  console.log(colorMaps)
+  for (const colorMap of colorMaps) {
+    message = ''
+    const styles = []
+    for (let index = 0; index < colorMap.length; index++) {
+      const r = palette[colorMap[index] * 4]
+      const g = palette[colorMap[index] * 4 + 1]
+      const b = palette[colorMap[index] * 4 + 2]
+      const a = palette[colorMap[index] * 4 + 3]
+      const style = `background: rgba(${r},${g},${b},${a}); color: rgba(${r},${g},${b},${a})`
+      message += `%c${'ABCDEFGHIJKLMNÑOPQRSTUVWXYZ'.substr(~~(Math.random() * 27), 1)}`
+      styles.push(style)
+    }
+    styles.unshift(message)
+    console.log(...styles)
+  }
+  console.log(`Color maps loaded`)
   /*
   console.log(`Loading music ${basic.music}`)
   if (!fm.fetch(basic.music)) {
@@ -293,9 +342,11 @@ export async function load(fm, name) {
   const goals = await fm.fetch(`${upperCaseName}.GOL`)
   console.log(goals)
   return {
+    fogColor: getFogColor(palette, colorMaps),
     sectors,
     objects: objects.objects,
     palette,
+    colorMaps,
     textures,
     meshes,
     frames,
