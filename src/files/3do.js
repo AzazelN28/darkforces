@@ -1,6 +1,6 @@
 /** @module files/3do */
 import dataViewUtils from 'utils/dataView'
-import { createParseEntry, parseContent, parseLine } from 'utils/parse'
+import { createParseEntry, parseContent, parseLine, isLine } from 'utils/parse'
 
 /**
  * Parses a .3DO file from a DataView
@@ -21,6 +21,7 @@ export function parse(dataView, start, size) {
     , textures = []
     , objects = []
 
+  console.log(content)
   parseContent(content, 'version', {
     'version': (line) => {
       const [version] = parseLine('3DO {v}', line)
@@ -56,6 +57,7 @@ export function parse(dataView, start, size) {
     },
     'texture-count': (line) => {
       const [count] = parseLine('TEXTURES {n}', line)
+      numTextures = count
       if (count === 0) {
         return 'object-entry-name'
       }
@@ -70,10 +72,26 @@ export function parse(dataView, start, size) {
       return 'texture-entry'
     },
     'object-entry-name': (line) => {
-      const [name] = parseLine('OBJECT "{a}"', line)
+      const [name] = parseLine('OBJECT "{a}"?', line)
       object = {
-        name
+        name,
+        numVertices: 0,
+        numTriangles: 0,
+        numQuads: 0,
+        vertices: [],
+        triangles: [],
+        quads: [],
+        texture: {
+          index: -1,
+          numVertices: 0,
+          numQuads: 0,
+          numTriangles: 0,
+          vertices: [],
+          quads: [],
+          triangles: []
+        }
       }
+      console.log(object)
       return 'object-entry-texture'
     },
     'object-entry-texture': (line) => {
@@ -96,31 +114,26 @@ export function parse(dataView, start, size) {
       return 'object-entry-vertex-entry'
     },
     'object-entry-polygon-count': (line) => {
-      const [count] = parseLine('QUADS {n}', line)
-      object.numQuads = count
-      object.quads = []
-      return 'object-entry-polygon-entry'
-    },
-    'object-entry-polygon-entry': (line) => {
-      const [,a,b,c,d,color,texture] = parseLine(' {n}: {n} {n} {n} {n} {n} {a}', line)
-      object.quads.push([a,b,c,d,color,texture])
-      if (object.quads.length < object.numQuads) {
-        return 'object-entry-polygon-entry'
-      }
-
-      if (object.texture.index !== -1) {
-        return 'object-entry-texture-vertex-count'
-      }
-
-      objects.push(object)
-      object = null
-      if (objects.length < numObjects) {
-        return 'object-entry-name'
+      if (isLine('QUADS {n}', line)) {
+        const [count] = parseLine('QUADS {n}', line)
+        object.numQuads = count
+        object.quads = []
+        console.log(object)
+        return 'object-entry-quad-entry'
+      } else if (isLine('TRIANGLES {n}', line)) {
+        const [count] = parseLine('TRIANGLES {n}', line)
+        object.numTriangles = count
+        object.triangles = []
+        console.log(object)
+        return 'object-entry-triangle-entry'
+      } else {
+        console.log('cacote', line)
       }
     },
     'object-entry-texture-vertex-count': (line) => {
       const [count] = parseLine('TEXTURE VERTICES {n}', line)
       object.texture.numVertices = count
+      object.texture.vertices = []
       return 'object-entry-texture-vertex-entry'
     },
     'object-entry-texture-vertex-entry': (line) => {
@@ -134,6 +147,7 @@ export function parse(dataView, start, size) {
     'object-entry-texture-polygon-count': (line) => {
       const [count] = parseLine('TEXTURE QUADS {n}', line)
       object.texture.numQuads = count
+      object.texture.quads = []
       return 'object-entry-texture-polygon-entry'
     },
     'object-entry-texture-polygon-entry': (line) => {
@@ -141,6 +155,40 @@ export function parse(dataView, start, size) {
       object.texture.quads.push([a,b,c,d])
       if (object.texture.quads.length < object.texture.numQuads) {
         return 'object-entry-texture-polygon-entry'
+      }
+
+      objects.push(object)
+      object = null
+      if (objects.length < numObjects) {
+        return 'object-entry-name'
+      }
+    },
+    'object-entry-quad-entry': (line) => {
+      const [, a, b, c, d, color, texture] = parseLine(' {n}: {n} {n} {n} {n} {n} {a}', line)
+      object.quads.push([a, b, c, d, color, texture])
+      if (object.quads.length < object.numQuads) {
+        return 'object-entry-quad-entry'
+      }
+
+      if (object.texture.index !== -1) {
+        return 'object-entry-texture-vertex-count'
+      }
+
+      objects.push(object)
+      object = null
+      if (objects.length < numObjects) {
+        return 'object-entry-name'
+      }
+    },
+    'object-entry-triangle-entry': (line) => {
+      const [, a, b, c, color, shading] = parseLine(' {n}: {n} {n} {n} {n} {a}', line)
+      object.triangles.push([a, b, c, color, shading])
+      if (object.triangles.length < object.numTriangles) {
+        return 'object-entry-triangle-entry'
+      }
+
+      if (object.texture.index !== -1) {
+        return 'object-entry-texture-vertex-count'
       }
 
       objects.push(object)

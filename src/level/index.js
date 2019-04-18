@@ -229,7 +229,8 @@ export async function load(fm, name) {
       let midGeometry, topGeometry, bottomGeometry
       if (wall.adjoin < 0) {
         midGeometry = buildMidWall(sector, wall)
-      // Otherwise we build the top part of the wall and the bottom part of the wall.
+      // Otherwise we build the top part of the wall and
+      // the bottom part of the wall.
       } else {
         topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
         bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
@@ -320,6 +321,7 @@ export async function load(fm, name) {
     console.log(`Loading mesh ${current}`)
     return fm.fetch(current)
   }))
+  console.log(meshes)
   console.log(`Loading frames ${objects.frameCount}`)
   const frames = await Promise.all(objects.frames.map((current) => {
     console.log(`Loading frame ${current}`)
