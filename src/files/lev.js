@@ -15,7 +15,9 @@ export function parse(dataView, start, size) {
     return {
       id: null,
       name: null,
-      ambient: null,
+      light: null,
+      floor: null,
+      ceiling: null,
       floorTexture: null,
       floorAltitude: null,
       ceilingTexture: null,
@@ -54,12 +56,12 @@ export function parse(dataView, start, size) {
     },
     'palette': (line) => {
       const [name] = parseLine('PALETTE {a}', line)
-      levelPalette = name
+      levelPalette = name.toUpperCase().trim()
       return 'music'
     },
     'music': (line) => {
       const [name] = parseLine('MUSIC {a}', line)
-      levelMusic = name
+      levelMusic = name.toUpperCase().trim()
       return 'parallax'
     },
     'parallax': (line) => {
@@ -101,11 +103,19 @@ export function parse(dataView, start, size) {
     },
     'sector-ambient': (line) => {
       const [ambient] = parseLine(' AMBIENT {n}', line)
-      sector.ambient = ambient
+      sector.light = ambient
       return 'sector-floor-texture'
     },
     'sector-floor-texture': (line) => {
       const [index, x, y, flags] = parseLine(' FLOOR TEXTURE {n} {d} {d} {n}', line)
+      if (sector.floor === null) {
+        sector.floor = {
+          texture: {
+            index, x, y, flags
+          },
+          altitude: null
+        }
+      }
       sector.floorTexture = {
         index, x, y, flags
       }
@@ -113,11 +123,20 @@ export function parse(dataView, start, size) {
     },
     'sector-floor-altitude': (line) => {
       const [altitude] = parseLine(' FLOOR ALTITUDE {d}', line)
+      sector.floor.altitude = altitude
       sector.floorAltitude = altitude
       return 'sector-ceiling-texture'
     },
     'sector-ceiling-texture': (line) => {
       const [index, x, y, flags] = parseLine(' CEILING TEXTURE {n} {d} {d} {n}', line)
+      if (sector.ceiling === null) {
+        sector.ceiling = {
+          texture: {
+            index, x, y, flags
+          },
+          altitude: null
+        }
+      }
       sector.ceilingTexture = {
         index, x, y, flags
       }
@@ -125,6 +144,7 @@ export function parse(dataView, start, size) {
     },
     'sector-ceiling-altitude': (line) => {
       const [altitude] = parseLine(' CEILING ALTITUDE {d}', line)
+      sector.ceiling.altitude = altitude
       sector.ceilingAltitude = altitude
       return 'sector-second-altitude'
     },
@@ -134,8 +154,8 @@ export function parse(dataView, start, size) {
       return 'sector-flags'
     },
     'sector-flags': (line) => {
-      const [x,y,z] = parseLine(' FLAGS {n} {n} {n}', line)
-      sector.flags = [x,y,z]
+      const [x, y, z] = parseLine(' FLAGS {n} {n} {n}', line)
+      sector.flags = [x, y, z]
       return 'sector-layer'
     },
     'sector-layer': (line) => {
@@ -150,7 +170,7 @@ export function parse(dataView, start, size) {
     },
     'sector-vertex': (line) => {
       const [x, z] = parseLine('  X: {d} Z: {d}', line)
-      sector.vertices.push([x, z])
+      sector.vertices.push([-x, z])
       if (sector.vertices.length === sector.vertexCount) {
         return 'sector-wall-count'
       }
@@ -162,14 +182,40 @@ export function parse(dataView, start, size) {
       return 'sector-wall'
     },
     'sector-wall': (line) => {
-      const [left,right,mid,top,bottom,sign,adjoin,mirror,walk,u,v,w,light] = parseLine(' WALL LEFT: {n} RIGHT: {n} MID: {n} {d} {d} {n} TOP: {n} {d} {d} {n} BOT: {n} {d} {d} {n} SIGN: {d} {d} {d} ADJOIN: {i} MIRROR: {i} WALK: {i} FLAGS: {n} {n} {n} LIGHT: {n}', line)
+      const [left,right,midt,midx,midy,midr,topt,topx,topy,topr,bottomt,bottomx,bottomy,bottomr,sign,signx,signy,adjoin,mirror,walk,u,v,w,light] = parseLine(' WALL LEFT: {i} RIGHT: {i} MID: {i} {d} {d} {i} TOP: {i} {d} {d} {i} BOT: {i} {d} {d} {i} SIGN: {d} {d} {d} ADJOIN: {i} MIRROR: {i} WALK: {i} FLAGS: {n} {n} {n} LIGHT: {n}', line)
       sector.walls.push({
         left,
         right,
-        mid,
-        top,
-        bottom,
+        mid: {
+          texture: midt,
+          offset: [midx, midy],
+          rotation: midr
+        },
+        midt,
+        midx,
+        midy,
+        midr,
+        top: {
+          texture: topt,
+          offset: [topx, topy],
+          rotation: topr
+        },
+        topt,
+        topx,
+        topy,
+        topr,
+        bottom: {
+          texture: bottomt,
+          offset: [bottomx, bottomy],
+          rotation: bottomr
+        },
+        bottomt,
+        bottomx,
+        bottomy,
+        bottomr,
         sign,
+        signx,
+        signy,
         adjoin,
         mirror,
         walk,

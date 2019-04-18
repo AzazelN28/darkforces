@@ -1,6 +1,7 @@
-import dataViewUtils from 'utils/dataViewUtils'
+import dataViewUtils from 'utils/dataView'
 import { createParseEntry } from 'utils/parse'
 import { parseContent, parseLine } from 'utils/parse'
+import { isLine } from '../utils/parse';
 
 /** @module files/o */
 
@@ -15,14 +16,16 @@ export function parse(dataView, start, size) {
   let levelName
     , podCount
     , pods = []
-    , waxCount
-    , waxs = []
-    , fmeCount
-    , fmes = []
-    , vocCount
-    , vocs = []
-    , objectCount // eslint-disable-line
-    , objects = [] // eslint-disable-line
+    , spriteCount
+    , sprites = []
+    , frameCount
+    , frames = []
+    , soundCount
+    , sounds = []
+    , objectCount
+    , objects = []
+    , object
+    , isObjectSequence = false
 
   parseContent(content, 'version', {
     'version': (line) => {
@@ -55,7 +58,7 @@ export function parse(dataView, start, size) {
     },
     'wax-count': (line) => {
       const [count] = parseLine('SPRS {n}', line)
-      waxCount = count
+      spriteCount = count
       if (count === 0) {
         return 'fme-count'
       }
@@ -63,15 +66,15 @@ export function parse(dataView, start, size) {
     },
     'wax': (line) => {
       const [name] = parseLine(' SPR: {a}', line)
-      waxs.push(name)
-      if (waxs.length === waxCount) {
+      sprites.push(name)
+      if (sprites.length === spriteCount) {
         return 'fme-count'
       }
       return 'wax'
     },
     'fme-count': (line) => {
       const [count] = parseLine('FMES {n}', line)
-      fmeCount = count
+      frameCount = count
       if (count === 0) {
         return 'voc-count'
       }
@@ -79,15 +82,15 @@ export function parse(dataView, start, size) {
     },
     'fme': (line) => {
       const [name] = parseLine(' FME: {a}', line)
-      fmes.push(name)
-      if (fmes.length === fmeCount) {
-        return 'sound-count'
+      frames.push(name)
+      if (frames.length === frameCount) {
+        return 'voc-count'
       }
       return 'fme'
     },
     'voc-count': (line) => {
       const [count] = parseLine('SOUNDS {n}', line)
-      vocCount = count
+      soundCount = count
       if (count === 0) {
         return 'object-count'
       }
@@ -95,8 +98,8 @@ export function parse(dataView, start, size) {
     },
     'voc': (line) => {
       const [name] = parseLine(' SOUND: {a}', line)
-      vocs.push(name)
-      if (vocs.length === vocCount) {
+      sounds.push(name)
+      if (sounds.length === soundCount) {
         return 'object-count'
       }
       return 'voc'
@@ -110,11 +113,76 @@ export function parse(dataView, start, size) {
       return 'object'
     },
     'object': (line) => { // eslint-disable-line
-      // TODO: See how to parse the CLASS elements.
+      if (isLine('CLASS: {*} DATA: {i} X: {d} Y: {d} Z: {d} PCH: {d} YAW: {d} ROL: {d} DIFF: {i}', line) && !isObjectSequence) {
+        const [className, data, x, y, z, pitch, yaw, roll, diff] = parseLine('CLASS: {*} DATA: {i} X: {d} Y: {d} Z: {d} PCH: {d} YAW: {d} ROL: {d} DIFF: {i}', line)
+        object = {
+          className: className.toLowerCase().trim(),
+          data,
+          x,
+          y,
+          z,
+          pitch,
+          yaw,
+          roll,
+          diff,
+          typeName: null,
+          vue: null,
+          radius: 0,
+          height: 0,
+          eye: false,
+          pause: false,
+          logics: [],
+          flags: null
+        }
+      } else if (isLine(' SEQ', line) && !isObjectSequence) {
+        isObjectSequence = true
+      } else if (isLine(' SEQEND', line) && isObjectSequence) {
+        objects.push(object)
+        object = null
+        isObjectSequence = false
+        if (objects.length === objectCount) {
+          return
+        }
+      } else if (isLine(' LOGIC: {**}', line) && isObjectSequence) {
+        const [logic] = parseLine(' LOGIC: {**}', line)
+        object.logics.push(logic.trim())
+      } else if (isLine(' EYE: {b}', line) && isObjectSequence) {
+        const [eye] = parseLine(' EYE: {b}', line)
+        object.eye = eye
+      } else if (isLine(' FLAGS: {n}', line) && isObjectSequence) {
+        const [flags] = parseLine(' FLAGS: {b}', line)
+        object.flags = flags
+      } else if (isLine(' TYPE: {**}', line) && isObjectSequence) {
+        const [typeName] = parseLine(' TYPE: {**}', line)
+        object.typeName = typeName.trim()
+      } else if (isLine(' RADIUS: {d}', line) && isObjectSequence) {
+        const [radius] = parseLine(' RADIUS: {d}', line)
+        object.radius = radius
+      } else if (isLine(' HEIGHT: {d}', line) && isObjectSequence) {
+        const [height] = parseLine(' HEIGHT: {d}', line)
+        object.height = height
+      } else if (isLine(' PAUSE: {b}', line) && isObjectSequence) {
+        const [pause] = parseLine('PAUSE: {b}', line)
+        object.pause = pause
+      } else if (isLine(' VUE: {*} {*}', line) && isObjectSequence) {
+        const [vue, id] = parseLine('VUE: {*} {*}', line)
+        object.vue = [vue, id]
+      }
+      return 'object'
     }
   })
   return {
-    levelName
+    name: levelName,
+    pods,
+    podCount,
+    sprites,
+    spriteCount,
+    frames,
+    frameCount,
+    sounds,
+    soundCount,
+    objects,
+    objectCount
   }
 }
 

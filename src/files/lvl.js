@@ -33,6 +33,11 @@ export function parse(dataView, start, size) {
   return levels
 }
 
+/**
+ * Parses an entry.
+ * @param {DirectoryEntry} entry
+ * @returns {DirectoryEntry}
+ */
 export function parseEntry({ dataView, start, size }) {
   return parse(dataView, start, size)
 }

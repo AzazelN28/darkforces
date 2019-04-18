@@ -74,6 +74,11 @@ export function parse(dataView, start, size) { // eslint-disable-line
   if (width === 1 && height !== 1) {
     const frameRate = dataView.getUint8(start + 20)
     const magicNumber = dataView.getUint8(start + 21)
+    console.log(magicNumber)
+    if (magicNumber === 0x00) {
+      console.warn('TODO: Implement BM with magicNumber 0')
+      return {}
+    }
     if (magicNumber !== 0x02) {
       throw new Error('Invalid magic number')
     }
@@ -104,6 +109,7 @@ export function parse(dataView, start, size) { // eslint-disable-line
         imageData: new ImageData(subWidth, subHeight)
       })
     }
+    console.log('BM Animated')
     return {
       isAnimated: true,
       width,
@@ -124,6 +130,7 @@ export function parse(dataView, start, size) { // eslint-disable-line
       const offset = dataView.getUint32(32 + (index * 4), true)
       offsets.push(start + offset)
     }
+    console.log('BM Compressed')
     return {
       isAnimated: false,
       width,
@@ -138,6 +145,7 @@ export function parse(dataView, start, size) { // eslint-disable-line
       imageData: new ImageData(width, height),
     }
   }
+  console.log('BM Uncompressed')
   return {
     isAnimated: false,
     width,
@@ -193,7 +201,7 @@ export function use(bitmap, palette) {
 /**
  * Renders a .BM bitmap
  * @param {Bitmap} bitmap
- * @param {number} cx
+ * @param {CanvasRenderingContext2D} cx - Context
  * @param {number} x
  * @param {number} y
  */

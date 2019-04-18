@@ -36,6 +36,7 @@
     "serve": "^9.6.0"
   },
   "dependencies": {
-    "@babel/runtime": "^7.4.2"
+    "@babel/runtime": "^7.4.2",
+    "gl-matrix": "^3.0.0"
   }
 }

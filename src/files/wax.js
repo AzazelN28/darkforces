@@ -1,12 +1,74 @@
-/** @module files/wax */
 import dataViewUtils from 'utils/dataView'
 import fme from 'files/fme'
 import { createParseEntry } from 'utils/parse'
 
+/** @module files/wax */
+
+/**
+ * Sprite angle. This object contains information that represents a view angle
+ * of a sprite.
+ * @typedef {Object} SpriteAngle
+ * @property {number} index
+ * @property {number} offset
+ * @property {number} unknown6
+ * @property {number} unknown7
+ * @property {number} unknown8
+ * @property {number} unknown9
+ * @property {Array<FME>} frames
+ */
+
+/**
+ * Sprite state element
+ * @typedef {Object} SpriteState
+ * @property {number} index - State index
+ * @property {number} width - Sprite width
+ * @property {number} height - Sprite height
+ * @property {number} frameRate - Frame rate
+ * @property {number} numFrames - Number of frames in this state
+ * @property {number} unknown3 - ?
+ * @property {number} unknown4 - ?
+ * @property {number} unknown5 - ?
+ * @property {number} offset -
+ * @property {Array<SpriteAngle>} angles
+ */
+
+/**
+ * Sprite element
+ * @typedef {Object} Sprite
+ * @property {number} numStates - Number of states
+ * @property {number} numFrames - Number of frames
+ * @property {number} numCells - Number of angles
+ * @property {number} scaleX - Scale X
+ * @property {number} scaleY - Scale Y
+ * @property {number} unknown1 - ?
+ * @property {number} unknown2 - ?
+ * @property {Array<SpriteState>} states
+ */
+
+/**
+ * Maximum number of sprite states
+ * @readonly
+ * @type {number}
+ */
 const MAX_STATES = 32
+
+/**
+ * Maximum number of sprite frames
+ * @readonly
+ * @type {number}
+ */
 const MAX_FRAMES = 32
+
+/**
+ * Maximum number of sprite angles
+ * @readonly
+ * @type {number}
+ */
 const MAX_ANGLES = 32
 
+/**
+ * Sprite state names for enemy sprites.
+ */
 export const GeneralStateNames = [
   'walk',
   'attack',
@@ -53,7 +115,7 @@ export function parse(dataView, start, size) { // eslint-disable-line
    && !dataViewUtils.verify(dataView, start, [0x00, 0x00, 0x01, 0x00])) {
     throw new Error('Invalid WAX signature')
   }
-  const numSequences = dataView.getInt32(start + 4, true)
+  const numStates = dataView.getInt32(start + 4, true)
   const numFrames = dataView.getInt32(start + 8, true)
   const numCells = dataView.getInt32(start + 12, true)
   const scaleX = dataView.getInt32(start + 16, true)
@@ -131,7 +193,7 @@ export function parse(dataView, start, size) { // eslint-disable-line
     })
   }
   return {
-    numSequences,
+    numStates,
     numFrames,
     numCells,
     scaleX,
@@ -150,11 +212,29 @@ export function parse(dataView, start, size) { // eslint-disable-line
  */
 export const parseEntry = createParseEntry(parse)
 
+/**
+ * Applies the palette to the sprite
+ * @param {Sprite} bitmap
+ * @param {Palette} palette
+ * @returns {Sprite}
+ */
+export function use(sprite, palette) {
+  for (const state of sprite.states) {
+    for (const angle of state.angles) {
+      for (const frame of angle.frames) {
+        fme.use(frame, palette)
+      }
+    }
+  }
+  return sprite
+}
+
 export default {
   GeneralStateNames,
   RemoteStateNames,
   SceneryStateNames,
   BarrelStateNames,
+  use,
   parse,
   parseEntry,
 }
