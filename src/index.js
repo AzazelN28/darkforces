@@ -13,17 +13,30 @@ import { createProgramFromSource } from './gl/program'
 import baseSounds from './audio/sounds'
 
 import { degreesToRadians } from './utils/angle'
+import log from './utils/log'
+
+import touchpad from './input/touchpad'
+import keyboard from './input/keyboard'
+import gamepad from './input/gamepad'
+import mouse from './input/mouse'
 
 const fm = new FileManager()
 fm.on('ready', async (fm) => {
-  console.log(await fm.fetch('JEDI.LVL'))
+  log.write(await fm.fetch('JEDI.LVL'))
   const sounds = await Promise.all(baseSounds.map((sound, index, list) => {
-    console.log(`Loading sound ${sound} ${index+1}/${list.length}`)
+    log.write(`Loading sound ${sound} ${index+1}/${list.length}`)
     return fm.fetch(sound)
   }))
-  console.log(sounds)
-  const currentLevel = await level.load(fm, 'SECBASE')
-  console.log(currentLevel)
+  log.write(sounds)
+  log.write(location)
+  const url = new URL(location)
+  log.write(url.searchParams)
+  const levelName = url.searchParams.has('level')
+    ? url.searchParams.get('level')
+    : 'GROMAS'
+  log.write(levelName)
+  const currentLevel = await level.load(fm, levelName)
+  log.write(currentLevel)
   const { fogColor } = currentLevel
   const engine = document.querySelector('canvas#engine')
   const debug = document.querySelector('canvas#debug')
@@ -45,7 +58,6 @@ fm.on('ready', async (fm) => {
   const backward = vec3.fromValues(0, 0, 1)
   const strafeLeft = vec3.fromValues(-1, 0, 0)
   const strafeRight = vec3.fromValues(1, 0, 0)
-  const keys = new Map()
   let zoom = 4.0
   let currentLayer = 0
   let currentSector = null
@@ -59,9 +71,16 @@ fm.on('ready', async (fm) => {
   const projectionView = mat4.create()
   const projectionViewModel = mat4.create()
 
+  const spriteBuffer = createVertexBuffer(gl, new Float32Array([
+    -64.0, -64.0, 0.0, 0.0, 0.0,
+     64.0, -64.0, 0.0, 1.0, 0.0,
+     64.0,  64.0, 0.0, 1.0, 1.0,
+    -64.0,  64.0, 0.0, 0.0, 1.0,
+  ]))
+
   // Sets the initial position.
   const { x, y, z, pitch, yaw, roll } = currentLevel.objects.find((object) => object.className === 'spirit')
-  console.log(pitch, yaw, roll)
+  log.write(pitch, yaw, roll)
   vec3.set(position, -x, y, z)
   vec3.set(direction, degreesToRadians(pitch), degreesToRadians(yaw + 180), degreesToRadians(roll))
 
@@ -104,7 +123,7 @@ fm.on('ready', async (fm) => {
     }
   `)
 
-  console.log('Uploading buffers...')
+  log.write('Uploading buffers...')
   for (const sector of currentLevel.sectors) {
     sector.indexBuffer = createIndexBuffer(gl, new Uint16Array(sector.indices))
     sector.floor.buffer = createVertexBuffer(gl, new Float32Array(sector.floor.geometry))
@@ -118,66 +137,94 @@ fm.on('ready', async (fm) => {
       }
     })
   }
-  console.log('All buffers uploaded')
+  log.write('All buffers uploaded')
 
-  console.log('Uploading textures...')
+  log.write('Uploading textures...')
   for (const texture of currentLevel.textures) {
     if (texture && texture.imageData) {
-      console.log(texture.width, texture.height)
+      log.write(texture.width, texture.height)
       texture.texture = createTexture2D(gl, texture.imageData)
     }
   }
-  console.log('All textures uploaded')
+  log.write('All textures uploaded')
 
-  function key(e) {
-    keys.set(e.code, e.type === 'keydown')
+  log.write(currentLevel.frames)
+  log.write('Uploading frames')
+  for (const frame of currentLevel.frames) {
+    frame.texture = createTexture2D(gl, frame.imageData)
   }
+  log.write('All frames uploaded')
+
+  /* TODO: Upload sprites
+  log.write('Uploading sprites')
+  for (const sprite of currentLevel.sprites) {
+
+  }
+  log.write('All sprites uploaded')
+  */
 
   function input() {
+    if (mouse.isLocked()) {
+      direction[0] += mouse.coords.movement[1] / gl.canvas.height
+      direction[1] += -mouse.coords.movement[0] / gl.canvas.width
+    } else {
+      direction[0] += touchpad.rightAxis[1] * 0.5
+      direction[1] += -touchpad.rightAxis[0] * 0.5
+    }
+
     // Move forward & backwards
-    if (keys.get('KeyA') || keys.get('ArrowLeft')) {
+    if (keyboard.isPressed('KeyA')
+     || keyboard.isPressed('ArrowLeft')
+     || touchpad.leftAxis[0] < 0) {
       vec3.add(velocity, velocity, strafeLeft)
-    } else if (keys.get('KeyD') || keys.get('ArrowRight')) {
+    } else if (keyboard.isPressed('KeyD')
+            || keyboard.isPressed('ArrowRight')
+            || touchpad.leftAxis[0] > 0) {
       vec3.add(velocity, velocity, strafeRight)
     }
 
     // Strafe left & right
-    if (keys.get('KeyW') || keys.get('ArrowUp')) {
+    if (keyboard.isPressed('KeyW')
+     || keyboard.isPressed('ArrowUp')
+     || touchpad.leftAxis[1] < 0) {
       vec3.add(velocity, velocity, forward)
-    } else if (keys.get('KeyS') || keys.get('ArrowDown')) {
+    } else if (keyboard.isPressed('KeyS')
+            || keyboard.isPressed('ArrowDown')
+            || touchpad.leftAxis[1] > 0) {
       vec3.add(velocity, velocity, backward)
     }
 
     // Move up & down
-    if (keys.get('KeyQ') || keys.get('PageUp')) {
+    if (keyboard.isPressed('KeyQ')
+     || keyboard.isPressed('PageUp')) {
       vec3.add(velocity, velocity, up)
-    } else if (keys.get('KeyE') || keys.get('PageDown')) {
+    } else if (keyboard.isPressed('KeyE') || keyboard.isPressed('PageDown')) {
       vec3.add(velocity, velocity, down)
     }
 
     // TODO: Set a max/min zoom level
-    if (keys.get('BracketLeft')) {
+    if (keyboard.isPressed('BracketLeft')) {
       if (zoom > 0) {
         zoom--
       }
-    } else if (keys.get('BracketRight')) {
+    } else if (keyboard.isPressed('BracketRight')) {
       if (zoom < 9) {
         zoom++
       }
     }
 
-    if (keys.get('KeyZ')) {
+    if (keyboard.isPressed('KeyZ')) {
       if (currentLayer > -9) {
         currentLayer--
       }
-    } else if (keys.get('KeyX')) {
+    } else if (keyboard.isPressed('KeyX')) {
       if (currentLayer < 9) {
         currentLayer++
       }
     }
 
-    if (keys.get('KeyR')) {
-      gl.canvas.requestPointerLock()
+    if (keyboard.isPressed('KeyR')) {
+      mouse.lock(gl.canvas)
     }
   }
 
@@ -198,13 +245,6 @@ fm.on('ready', async (fm) => {
   }
 
   let isDirty = false
-
-  function mouse(e) {
-    if (document.pointerLockElement) {
-      direction[0] += e.movementY / gl.canvas.height
-      direction[1] += -e.movementX / gl.canvas.width
-    }
-  }
 
   function render() {
     if (gl.canvas.width !== gl.canvas.clientWidth) {
@@ -246,6 +286,7 @@ fm.on('ready', async (fm) => {
     const TEXTURE_BASE = 8
 
     gl.uniformMatrix4fv(gl.getUniformLocation(program, 'u_mvp'), false, projectionView)
+    // TODO: Move this to a function called render sectors.
     for (const sector of currentLevel.sectors) {
       if (currentLevel.textures[sector.floor.texture.index]) {
         gl.uniform2f(
@@ -302,6 +343,7 @@ fm.on('ready', async (fm) => {
       gl.enable(gl.CULL_FACE)
       gl.cullFace(gl.FRONT)
 
+      // TODO: Move this code to a function called renderWalls
       for (const wall of sector.walls) {
         if (wall.mid.buffer) {
           if (currentLevel.textures[wall.mid.texture]) {
@@ -383,7 +425,26 @@ fm.on('ready', async (fm) => {
     // all the objects to do the alpha blending.
     for (const object of currentLevel.objects) {
       if (object.className === 'sprite') {
-        /*
+        const { x, y, z } = object
+        mat4.identity(model)
+        mat4.translate(model, model, [x,y,z])
+        mat4.multiply(projectionView, projection, view)
+
+        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'u_mvp'), false, projectionView)
+
+        gl.uniform2f(
+          gl.getUniformLocation(program, 'u_texbase'),
+          1.0,
+          1.0
+        )
+
+        gl.activeTexture(gl.TEXTURE0)
+        //gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.floor.texture.index].texture)
+        gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
+        gl.uniform1f(gl.getUniformLocation(program, 'u_light'), 1.0)
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, spriteBuffer)
+
         gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
         gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
 
@@ -391,7 +452,6 @@ fm.on('ready', async (fm) => {
         gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
         gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
-        */
       } else if (object.className === '3d') {
         // TODO: We should draw the 3D models in here.
       }
@@ -408,6 +468,8 @@ fm.on('ready', async (fm) => {
     }
 
     cx.clearRect(0, 0, cx.canvas.width, cx.canvas.height)
+
+    log.render(cx)
 
     const scx = cx.canvas.width >> 1
     const scy = cx.canvas.height >> 1
@@ -569,10 +631,11 @@ fm.on('ready', async (fm) => {
   }
 
   function start() {
-    window.addEventListener('mousedown', mouse)
-    window.addEventListener('mousemove', mouse)
-    window.addEventListener('keyup', key)
-    window.addEventListener('keydown', key)
+    mouse.start()
+    touchpad.start()
+    keyboard.start()
+    gamepad.start()
+
     frameID = window.requestAnimationFrame(frame)
   }
 

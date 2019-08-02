@@ -115,6 +115,7 @@ export function use(bitmap, palette) {
       bufferOffset++
     }
   }
+  return bitmap
 }
 
 /**

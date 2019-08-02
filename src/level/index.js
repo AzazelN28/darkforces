@@ -9,6 +9,7 @@ import { from, isBetween } from '../utils/range'
  */
 function triangulate(sector) {
   return earcut(sector.vertices.flat())
+  /*
   const vertices = []
   const holes = []
   let start = null
@@ -33,6 +34,7 @@ function triangulate(sector) {
     holes.pop()
   }
   return earcut(vertices, holes)
+  */
 }
 
 /**
@@ -250,6 +252,7 @@ export async function load(fm, name) {
     console.log(`Loading sprite ${current}`)
     return fm.fetch(current)
   }))
+  console.log(sprites)
   console.log(`Loading sounds ${objects.soundCount}`)
   const sounds = await Promise.all(objects.sounds.map((current) => {
     console.log(`Loading sound ${current}`)

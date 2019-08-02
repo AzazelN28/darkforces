@@ -29,11 +29,11 @@
     "chai": "^4.2.0",
     "cross-env": "^5.2.0",
     "eslint": "^5.15.3",
-    "jsdoc": "^3.5.5",
+    "jsdoc": "^3.6.3",
     "minami": "^1.2.3",
     "mocha": "^5.2.0",
     "parcel-bundler": "^1.12.3",
-    "serve": "^9.6.0"
+    "serve": "^11.1.0"
   },
   "dependencies": {
     "@babel/runtime": "^7.4.2",

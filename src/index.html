@@ -38,11 +38,64 @@
         height: 100%;
         image-rendering: pixelated;
       }
+
+      .touch-controls {
+        overflow: hidden;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+      }
+
+      .touch-control {
+        border-radius: 100%;
+        box-shadow: inset 0 0 5vw #fff;
+      }
+
+      .touch-control-hat-container {
+        position: fixed;
+        bottom: 10vw;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 10vw;
+        height: 10vw;
+      }
+
+      #left-hat,
+      #right-hat {
+        width: 10vw;
+        height: 10vw;
+      }
+
+      #left-hat-container {
+        left: 10vw;
+      }
+      #right-hat-container {
+        right: 10vw;
+      }
+
+      @media (hover:hover) {
+        /** Hides touch controls on non touch devices */
+        .touch-controls {
+          display: none;
+        }
+      }
+
     </style>
   </head>
   <body>
     <canvas id="engine"></canvas>
     <canvas id="debug"></canvas>
+    <div class="touch-controls">
+      <div class="touch-control-hat-container" id="left-hat-container">
+        <div class="touch-control" id="left-hat"></div>
+      </div>
+      <div class="touch-control-hat-container" id="right-hat-container">
+        <div class="touch-control" id="right-hat"></div>
+      </div>
+    </div>
     <script src="./index.js"></script>
   </body>
 </html>
