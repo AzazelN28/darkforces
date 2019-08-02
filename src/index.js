@@ -33,7 +33,7 @@ fm.on('ready', async (fm) => {
   log.write(url.searchParams)
   const levelName = url.searchParams.has('level')
     ? url.searchParams.get('level')
-    : 'GROMAS'
+    : 'SECBASE'
   log.write(levelName)
   const currentLevel = await level.load(fm, levelName)
   log.write(currentLevel)
@@ -175,22 +175,22 @@ fm.on('ready', async (fm) => {
     // Move forward & backwards
     if (keyboard.isPressed('KeyA')
      || keyboard.isPressed('ArrowLeft')
-     || touchpad.leftAxis[0] < 0) {
+     || touchpad.leftAxis[0] < 0.5) {
       vec3.add(velocity, velocity, strafeLeft)
     } else if (keyboard.isPressed('KeyD')
             || keyboard.isPressed('ArrowRight')
-            || touchpad.leftAxis[0] > 0) {
+            || touchpad.leftAxis[0] > 0.5) {
       vec3.add(velocity, velocity, strafeRight)
     }
 
     // Strafe left & right
     if (keyboard.isPressed('KeyW')
      || keyboard.isPressed('ArrowUp')
-     || touchpad.leftAxis[1] < 0) {
+     || touchpad.leftAxis[1] < 0.5) {
       vec3.add(velocity, velocity, forward)
     } else if (keyboard.isPressed('KeyS')
             || keyboard.isPressed('ArrowDown')
-            || touchpad.leftAxis[1] > 0) {
+            || touchpad.leftAxis[1] > 0.5) {
       vec3.add(velocity, velocity, backward)
     }
 
