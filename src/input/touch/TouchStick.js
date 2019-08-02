@@ -1,23 +1,13 @@
 import { clamp } from '../../utils/range'
+import touch from '../touch'
 import events from '../../utils/events'
+import { getElement } from '../../utils/dom'
 
-const isTouchSupported = (() => {
-  try {
-    document.createEvent('TouchEvent')
-    return true
-  } catch (error) {
-    return false
-  }
-})()
+const isTouchSupported = touch.isAvailable()
 
 export default class TouchHat {
   constructor(element) {
-    if (typeof element === 'string' || element instanceof String) {
-      this.element = document.querySelector(element)
-    } else {
-      this.element = element
-    }
-
+    this.element = getElement(element)
     this.isDown = false
 
     //
@@ -166,7 +156,6 @@ export default class TouchHat {
   updateValueFromPosition() {
     this.value[0] = clamp(this.position[0] / this.areaRect.width * 2, -1, 1)
     this.value[1] = clamp(this.position[1] / this.areaRect.height * 2, -1, 1)
-    console.log(this.value)
   }
 
   updateHat() {

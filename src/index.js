@@ -58,6 +58,7 @@ fm.on('ready', async (fm) => {
   const backward = vec3.fromValues(0, 0, 1)
   const strafeLeft = vec3.fromValues(-1, 0, 0)
   const strafeRight = vec3.fromValues(1, 0, 0)
+  const scaledMovement = vec3.create()
   let zoom = 4.0
   let currentLayer = 0
   let currentSector = null
@@ -168,29 +169,42 @@ fm.on('ready', async (fm) => {
       direction[0] += mouse.coords.movement[1] / gl.canvas.height
       direction[1] += -mouse.coords.movement[0] / gl.canvas.width
     } else {
-      direction[0] += touchpad.rightAxis[1] * 0.5
-      direction[1] += -touchpad.rightAxis[0] * 0.5
+      direction[0] += touchpad.rightStick[1] * 0.125
+      direction[1] += -touchpad.rightStick[0] * 0.125
+    }
+
+    if (touchpad.isPressed('LeftStickLeft')) {
+      vec3.scale(scaledMovement, strafeLeft, Math.abs(touchpad.leftStick[0]))
+      vec3.add(velocity, velocity, scaledMovement)
+    } else if (touchpad.isPressed('LeftStickRight')) {
+      vec3.scale(scaledMovement, strafeRight, Math.abs(touchpad.leftStick[0]))
+      vec3.add(velocity, velocity, scaledMovement)
+    }
+
+    if (touchpad.isPressed('LeftStickUp')) {
+      vec3.scale(scaledMovement, forward, Math.abs(touchpad.leftStick[1]))
+      vec3.add(velocity, velocity, scaledMovement)
+    } else if (touchpad.isPressed('LeftStickDown')) {
+      vec3.scale(scaledMovement, backward, Math.abs(touchpad.leftStick[1]))
+      vec3.add(velocity, velocity, scaledMovement)
     }
 
     // Move forward & backwards
     if (keyboard.isPressed('KeyA')
-     || keyboard.isPressed('ArrowLeft')
-     || touchpad.leftAxis[0] < -0.5) {
+     || keyboard.isPressed('ArrowLeft')) {
       vec3.add(velocity, velocity, strafeLeft)
     } else if (keyboard.isPressed('KeyD')
-            || keyboard.isPressed('ArrowRight')
-            || touchpad.leftAxis[0] > 0.5) {
+            || keyboard.isPressed('ArrowRight')) {
       vec3.add(velocity, velocity, strafeRight)
     }
 
     // Strafe left & right
     if (keyboard.isPressed('KeyW')
-     || keyboard.isPressed('ArrowUp')
-     || touchpad.leftAxis[1] < -0.5) {
+     || keyboard.isPressed('ArrowUp')) {
       vec3.add(velocity, velocity, forward)
     } else if (keyboard.isPressed('KeyS')
             || keyboard.isPressed('ArrowDown')
-            || touchpad.leftAxis[1] > 0.5) {
+            || touchpad.isPressed('LeftStickDown')) {
       vec3.add(velocity, velocity, backward)
     }
 
@@ -635,6 +649,11 @@ fm.on('ready', async (fm) => {
     touchpad.start()
     keyboard.start()
     gamepad.start()
+
+    const fullScreenButton = document.querySelector('#full-screen-button')
+    fullScreenButton.onclick = (e) => {
+      mouse.lock(document.body).then(() => document.body.requestFullscreen())
+    }
 
     frameID = window.requestAnimationFrame(frame)
   }

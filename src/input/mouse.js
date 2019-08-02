@@ -129,14 +129,14 @@ export function isLocked() {
  * @param {Element} target - elemento que va a bloquear el puntero.
  */
 export function lock(target) {
-  target.requestPointerLock()
+  return target.requestPointerLock()
 }
 
 /**
  * Desbloqueamos el puntero
  */
 export function unlock() {
-  document.exitPointerLock()
+  return document.exitPointerLock()
 }
 
 export default {
