@@ -175,7 +175,7 @@ fm.on('ready', async (fm) => {
     // Move forward & backwards
     if (keyboard.isPressed('KeyA')
      || keyboard.isPressed('ArrowLeft')
-     || touchpad.leftAxis[0] < 0.5) {
+     || touchpad.leftAxis[0] < -0.5) {
       vec3.add(velocity, velocity, strafeLeft)
     } else if (keyboard.isPressed('KeyD')
             || keyboard.isPressed('ArrowRight')
@@ -186,7 +186,7 @@ fm.on('ready', async (fm) => {
     // Strafe left & right
     if (keyboard.isPressed('KeyW')
      || keyboard.isPressed('ArrowUp')
-     || touchpad.leftAxis[1] < 0.5) {
+     || touchpad.leftAxis[1] < -0.5) {
       vec3.add(velocity, velocity, forward)
     } else if (keyboard.isPressed('KeyS')
             || keyboard.isPressed('ArrowDown')
