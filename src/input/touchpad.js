@@ -65,5 +65,8 @@ export default {
   },
   get rightStick() {
     return rightStick.value
+  },
+  isEnabled() {
+    return touch.isEnabled()
   }
 }

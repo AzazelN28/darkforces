@@ -8,6 +8,9 @@ import { from, isBetween } from '../utils/range'
  * @returns {Array<number>}
  */
 function triangulate(sector) {
+  /*
+  return sector.vertices.map((index) => index)
+  */
   return earcut(sector.vertices.flat())
   /*
   const vertices = []
@@ -38,7 +41,7 @@ function triangulate(sector) {
 }
 
 /**
- * Computes the bounding box of a sector
+ * Computes the bounding box of a sector.
  * @param {Sector} sector
  * @returns {BoundingBox}
  */
@@ -60,6 +63,31 @@ function computeSectorBoundingBox(sector) {
     minX, maxX,
     minY, maxY,
     minZ, maxZ
+  ]
+}
+
+/**
+ * Computes the bounding rect of a sector.
+ * @param {Sector} sector
+ * @returns {BoundingRect}
+ */
+function computeSectorBoundingRect(sector) {
+  let maxX = Number.MIN_VALUE
+  let minX = Number.MAX_VALUE
+  let maxZ = Number.MIN_VALUE
+  let minZ = Number.MAX_VALUE
+  for (const wall of sector.walls) {
+    const [sx, sz] = sector.vertices[wall.left]
+    const [ex, ez] = sector.vertices[wall.right]
+    maxX = Math.max(maxX, sx, ex)
+    minX = Math.min(minX, sx, ex)
+    maxZ = Math.max(maxZ, sz, ez)
+    minZ = Math.min(minZ, sz, ez)
+  }
+  return [
+    minX, maxX,
+    minZ, maxZ,
+    maxX - minX, maxZ - minZ
   ]
 }
 
@@ -90,14 +118,29 @@ function getLight(light) {
 }
 
 /**
+ * Returns candidates to be the current sector.
+ * @param {*} position
+ * @param {*} sectors
+ */
+export function getCurrentSectors([x, , z], sectors) {
+  const candidates = []
+  for (const sector of sectors) {
+    const [minX, maxX, minZ, maxZ] = sector.boundingRect
+    if (isBetween(x, minX, maxX)
+     && isBetween(z, minZ, maxZ)) {
+      candidates.push(sector)
+    }
+  }
+  return candidates
+}
+
+/**
  * Returns the current sector
  * @param {vec3} position
  * @param {Array<Sector>} sectors
  * @returns {Sector|null}
  */
 export function getCurrentSector([x, y, z], sectors) {
-  // TODO: This should give better results by using walls instead
-  // of just using bounding boxes.
   for (const sector of sectors) {
     const [minX, maxX, minY, maxY, minZ, maxZ] = sector.boundingBox
     if (isBetween(x, minX, maxX)
@@ -107,6 +150,28 @@ export function getCurrentSector([x, y, z], sectors) {
     }
   }
   return null
+  /*const candidates = getCurrentSectors(position, sectors)
+  if (candidates.length === 0) {
+    return null
+  }
+
+  candidates.sort((a, b) => {
+    return Math.min(
+      a.boundingRect[4] - b.boundingRect[4],
+      a.boundingRect[5] - b.boundingRect[5]
+    )
+  })
+
+  const [x, y, z] = position
+  for (const sector of candidates) {
+    const [minX, maxX, minY, maxY, minZ, maxZ] = sector.boundingBox
+    if (isBetween(x, minX, maxX)
+     && isBetween(y, minY, maxY)
+     && isBetween(z, minZ, maxZ)) {
+      return sector
+    }
+  }
+  return null*/
 }
 
 /**
@@ -128,8 +193,8 @@ export async function load(fm, name) {
       let midGeometry, topGeometry, bottomGeometry
       if (wall.adjoin < 0) {
         midGeometry = buildMidWall(sector, wall)
-      // Otherwise we build the top part of the wall and
-      // the bottom part of the wall.
+        // Otherwise we build the top part of the wall and
+        // the bottom part of the wall.
       } else {
         topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
         bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
@@ -177,6 +242,7 @@ export async function load(fm, name) {
       light: getLight(sector.light),
       walls,
       boundingBox: computeSectorBoundingBox(sector),
+      boundingRect: computeSectorBoundingRect(sector),
       wallColor: new Float32Array([Math.random(), Math.random(), Math.random()]),
       planeColor: new Float32Array([Math.random(), Math.random(), Math.random()]),
     }

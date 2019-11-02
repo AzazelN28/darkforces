@@ -45,10 +45,10 @@ export function stop() {
  * Returns if the touch controls are available.
  * @returns {boolean}
  */
-export function isAvailable() {
+export function isEnabled() {
   try {
     document.createEvent('TouchEvent')
-    return true
+    return navigator.maxTouchPoints > 0
   } catch (e) {
     return false
   }
@@ -57,5 +57,5 @@ export function isAvailable() {
 export default {
   start,
   stop,
-  isAvailable
+  isEnabled,
 }

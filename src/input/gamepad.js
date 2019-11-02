@@ -6,6 +6,10 @@ const eventTypes = [
 ]
 
 let isRunning = false
+  , isEnabled = false
+  , gamepads
+  , leftStick = [0, 0]
+  , rightStick = [0, 0]
 
 /**
  * Handles how the gamepad is going to be managed when it is
@@ -18,10 +22,19 @@ function handler(e) {
 
 /**
  * Updates gamepads list
+ * @param {number} [time]
  */
-export function update() {
-  const gamepads = navigator.getGamepads()
-  console.log(update)
+export function update(time) {
+  gamepads = navigator.getGamepads()
+  for (const gamepad of gamepads) {
+    if (gamepad && gamepad.connected) {
+      leftStick[0] = gamepad.axes[0]
+      leftStick[1] = gamepad.axes[1]
+      rightStick[0] = gamepad.axes[3]
+      rightStick[1] = gamepad.axes[4]
+      isEnabled = true
+    }
+  }
 }
 
 /**
@@ -48,8 +61,54 @@ export function stop() {
   return true
 }
 
+export function isButtonPressed(index) {
+  for (const gamepad of gamepads) {
+    if (gamepad && gamepad.connected) {
+      if (gamepad.buttons[index].pressed) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+export function isAxisPressed(index) {
+  for (const gamepad of gamepads) {
+    if (gamepad && gamepad.connected) {
+      if (Math.abs(gamepad.axes[index]) > 0.5) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+export function isPressed(name) {
+  switch (name) {
+  case 'LeftStickLeft': return leftStick[0] < -0.5
+  case 'LeftStickRight': return leftStick[0] > 0.5
+  case 'LeftStickUp': return leftStick[1] < -0.5
+  case 'LeftStickDown': return leftStick[1] > 0.5
+  case 'RightStickLeft': return rightStick[0] < -0.5
+  case 'RightStickRight': return rightStick[0] > 0.5
+  case 'RightStickUp': return rightStick[1] < -0.5
+  case 'RightStickDown': return rightStick[1] > 0.5
+  }
+}
+
+export function isReleased(name) {
+  return !isPressed(name)
+}
+
 export default {
   start,
   update,
-  stop
+  stop,
+  leftStick,
+  rightStick,
+  isPressed,
+  isReleased,
+  isEnabled() {
+    return isEnabled
+  }
 }

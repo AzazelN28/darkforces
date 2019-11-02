@@ -3,7 +3,7 @@ import touch from '../touch'
 import events from '../../utils/events'
 import { getElement } from '../../utils/dom'
 
-const isTouchSupported = touch.isAvailable()
+const isTouchSupported = touch.isEnabled()
 
 export default class TouchHat {
   constructor(element) {
