@@ -123,7 +123,7 @@ function getLight(light) {
  * @returns {boolean}
  */
 export function isInBoundingRect([x, , z], boundingRect) {
-  const [minX, maxX, minZ, maxZ] = boundingBox
+  const [minX, maxX, minZ, maxZ] = boundingRect
   return isBetween(x, minX, maxX)
       && isBetween(z, minZ, maxZ)
 }
@@ -207,7 +207,7 @@ export function isPositionOnWall([x, , z], sector, wall) {
 }
 
 /**
- *
+ * Returns if point is projected on line segment
  * @param {vec2} position
  * @param {vec2} start
  * @param {vec2} end
@@ -421,10 +421,12 @@ export async function load(fm, name) {
   }))
   console.log(meshes)
   console.log(`Loading frames ${objects.frameCount}`)
-  const frames = await Promise.all(objects.frames.map((current) => {
+  const frames = new Map(await Promise.all(objects.frames.map((current) => {
     console.log(`Loading frame ${current}`)
     return fm.fetch(current)
-  }))
+      .then((frame) => [current, frame])
+  })))
+  console.log(frames)
   console.log(`Loading sprites ${objects.spriteCount}`)
   const sprites = await Promise.all(objects.sprites.map((current) => {
     console.log(`Loading sprite ${current}`)

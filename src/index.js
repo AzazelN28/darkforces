@@ -24,6 +24,9 @@ import mouse from './input/mouse'
 import defaultVertexShader from './shaders/default.v.glsl'
 import defaultFragmentShader from './shaders/default.f.glsl'
 
+import spriteVertexShader from './shaders/sprite.v.glsl'
+import spriteFragmentShader from './shaders/sprite.f.glsl'
+
 const fm = new FileManager()
 fm.on('ready', async (fm) => {
   window.fm = fm
@@ -79,6 +82,14 @@ fm.on('ready', async (fm) => {
   const DEBUG_VERTEX_SIZE = 4
   const DEBUG_VERTEX_HALF_SIZE = DEBUG_VERTEX_SIZE >> 1
 
+  let zoom = DEFAULT_ZOOM
+
+  // Información del jugador.
+  let currentLayer = DEFAULT_LAYER
+  let currentSector = null
+  let shield = 100
+  let health = 100
+  let battery = 100
   const up = vec3.fromValues(0, -1, 0)
   const down = vec3.fromValues(0, 1, 0)
   const forward = vec3.fromValues(0, 0, -1)
@@ -86,9 +97,6 @@ fm.on('ready', async (fm) => {
   const strafeLeft = vec3.fromValues(-1, 0, 0)
   const strafeRight = vec3.fromValues(1, 0, 0)
   const scaledMovement = vec3.create()
-  let zoom = DEFAULT_ZOOM
-  let currentLayer = DEFAULT_LAYER
-  let currentSector = null
   const velocity = vec3.create()
   const position = vec3.create()
   const nextPosition = vec3.create()
@@ -100,11 +108,16 @@ fm.on('ready', async (fm) => {
   const projectionView = mat4.create()
   const projectionViewModel = mat4.create()
 
+  /*
   const spriteBuffer = createVertexBuffer(gl, new Float32Array([
-    -64.0, -64.0, 0.0, 0.0, 0.0,
-     64.0, -64.0, 0.0, 1.0, 0.0,
-     64.0,  64.0, 0.0, 1.0, 1.0,
-    -64.0,  64.0, 0.0, 0.0, 1.0,
+    0.0, 0.0, 0.0, 0.0, 0.0
+  ]))
+  */
+  const spriteBuffer = createVertexBuffer(gl, new Float32Array([
+    -1.0, -1.0, 0.0, 0.0, 0.0,
+     1.0, -1.0, 0.0, 1.0, 0.0,
+     1.0,  1.0, 0.0, 1.0, 1.0,
+    -1.0,  1.0, 0.0, 0.0, 1.0,
   ]))
 
   // Sets the initial position.
@@ -119,7 +132,8 @@ fm.on('ready', async (fm) => {
   vec3.set(position, -x, y, z)
   vec3.set(direction, degreesToRadians(pitch), degreesToRadians(yaw + 180), degreesToRadians(roll))
 
-  const program = createProgramFromSource(gl, defaultVertexShader, defaultFragmentShader)
+  const defaultProgram = createProgramFromSource(gl, defaultVertexShader, defaultFragmentShader)
+  const spriteProgram = createProgramFromSource(gl, spriteVertexShader, spriteFragmentShader)
 
   log.write('Uploading buffers...')
   for (const sector of currentLevel.sectors) {
@@ -148,7 +162,7 @@ fm.on('ready', async (fm) => {
 
   log.write(currentLevel.frames)
   log.write('Uploading frames')
-  for (const frame of currentLevel.frames) {
+  for (const [name, frame] of currentLevel.frames) {
     frame.texture = createTexture2D(gl, frame.imageData, {
       wrapS: gl.CLAMP_TO_EDGE,
       wrapT: gl.CLAMP_TO_EDGE
@@ -334,6 +348,7 @@ fm.on('ready', async (fm) => {
           // obtenemos la distancia del punto a la pared para saber si
           // el punto colisiona con la pared.
           const distance = wall.distance = signedDistanceToWall(nextPosition, currentSector, wall)
+          const absoluteDistance = Math.abs(distance)
 
           // Si la pared es "caminable" entonces lo que hacemos es
           // tener en cuenta si la distancia es mayor o igual a 0,
@@ -358,8 +373,8 @@ fm.on('ready', async (fm) => {
           // y "empujamos" al jugador hacia fuera.
           } else if (distance > -0.5) {
 
-            nextPosition[0] += wall.normal[0] * 0.1
-            nextPosition[2] += wall.normal[1] * 0.1
+            nextPosition[0] += wall.normal[0] * absoluteDistance
+            nextPosition[2] += wall.normal[1] * absoluteDistance
 
           }
         }
@@ -413,23 +428,23 @@ fm.on('ready', async (fm) => {
       if (isRenderFloorEnabled
        && currentLevel.textures[sector.floor.texture.index]) {
         gl.uniform2f(
-          gl.getUniformLocation(program, 'u_texbase'),
+          gl.getUniformLocation(defaultProgram, 'u_texbase'),
           currentLevel.textures[sector.floor.texture.index].width / TEXTURE_BASE,
           currentLevel.textures[sector.floor.texture.index].height / TEXTURE_BASE
         )
 
         gl.activeTexture(gl.TEXTURE0)
         gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.floor.texture.index].texture)
-        gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
-        gl.uniform1f(gl.getUniformLocation(program, 'u_light'), sector.light)
+        gl.uniform1i(gl.getUniformLocation(defaultProgram, 'u_sampler'), 0)
+        gl.uniform1f(gl.getUniformLocation(defaultProgram, 'u_light'), sector.light)
 
         gl.bindBuffer(gl.ARRAY_BUFFER, sector.floor.buffer)
 
-        gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
-        gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
+        gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_coords'))
+        gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
 
-        gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_texcoords'))
-        gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
+        gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_texcoords'))
+        gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
         // gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sector.indexBuffer)
 
@@ -442,23 +457,23 @@ fm.on('ready', async (fm) => {
        && currentLevel.textures[sector.ceiling.texture.index]
        && !(sector.flags[0] & 0x01 === 0x01)) {
         gl.uniform2f(
-          gl.getUniformLocation(program, 'u_texbase'),
+          gl.getUniformLocation(defaultProgram, 'u_texbase'),
           currentLevel.textures[sector.ceiling.texture.index].width / TEXTURE_BASE,
           currentLevel.textures[sector.ceiling.texture.index].height / TEXTURE_BASE
         )
 
         gl.activeTexture(gl.TEXTURE0)
         gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.ceiling.texture.index].texture)
-        gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
-        gl.uniform1f(gl.getUniformLocation(program, 'u_light'), sector.light)
+        gl.uniform1i(gl.getUniformLocation(defaultProgram, 'u_sampler'), 0)
+        gl.uniform1f(gl.getUniformLocation(defaultProgram, 'u_light'), sector.light)
 
         gl.bindBuffer(gl.ARRAY_BUFFER, sector.ceiling.buffer)
 
-        gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
-        gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
+        gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_coords'))
+        gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
 
-        gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_texcoords'))
-        gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
+        gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_texcoords'))
+        gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
         gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.ceiling.geometry.length / 5)
         // gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sector.indexBuffer)
@@ -484,23 +499,23 @@ fm.on('ready', async (fm) => {
         if (currentLevel.textures[wall.mid.texture]) {
 
           gl.uniform2f(
-            gl.getUniformLocation(program, 'u_texbase'),
+            gl.getUniformLocation(defaultProgram, 'u_texbase'),
             currentLevel.textures[wall.mid.texture].width / TEXTURE_BASE,
             currentLevel.textures[wall.mid.texture].height / TEXTURE_BASE
           )
 
           gl.activeTexture(gl.TEXTURE0)
           gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.mid.texture].texture)
-          gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
-          gl.uniform1f(gl.getUniformLocation(program, 'u_light'), wall.light)
+          gl.uniform1i(gl.getUniformLocation(defaultProgram, 'u_sampler'), 0)
+          gl.uniform1f(gl.getUniformLocation(defaultProgram, 'u_light'), wall.light)
 
           gl.bindBuffer(gl.ARRAY_BUFFER, wall.mid.buffer)
 
-          gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
-          gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
+          gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_coords'))
+          gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
 
-          gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_texcoords'))
-          gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
+          gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_texcoords'))
+          gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
           gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
         }
@@ -508,23 +523,23 @@ fm.on('ready', async (fm) => {
         if (currentLevel.textures[wall.top.texture]) {
 
           gl.uniform2f(
-            gl.getUniformLocation(program, 'u_texbase'),
+            gl.getUniformLocation(defaultProgram, 'u_texbase'),
             currentLevel.textures[wall.top.texture].width / TEXTURE_BASE,
             currentLevel.textures[wall.top.texture].height / TEXTURE_BASE
           )
 
           gl.activeTexture(gl.TEXTURE0)
           gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.top.texture].texture)
-          gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
-          gl.uniform1f(gl.getUniformLocation(program, 'u_light'), wall.light)
+          gl.uniform1i(gl.getUniformLocation(defaultProgram, 'u_sampler'), 0)
+          gl.uniform1f(gl.getUniformLocation(defaultProgram, 'u_light'), wall.light)
 
           gl.bindBuffer(gl.ARRAY_BUFFER, wall.top.buffer)
 
-          gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
-          gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
+          gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_coords'))
+          gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
 
-          gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_texcoords'))
-          gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
+          gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_texcoords'))
+          gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
           gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
         }
@@ -532,23 +547,23 @@ fm.on('ready', async (fm) => {
         if (currentLevel.textures[wall.bottom.texture]) {
 
           gl.uniform2f(
-            gl.getUniformLocation(program, 'u_texbase'),
+            gl.getUniformLocation(defaultProgram, 'u_texbase'),
             currentLevel.textures[wall.bottom.texture].width / TEXTURE_BASE,
             currentLevel.textures[wall.bottom.texture].height / TEXTURE_BASE
           )
 
           gl.activeTexture(gl.TEXTURE0)
           gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.bottom.texture].texture)
-          gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
-          gl.uniform1f(gl.getUniformLocation(program, 'u_light'), wall.light)
+          gl.uniform1i(gl.getUniformLocation(defaultProgram, 'u_sampler'), 0)
+          gl.uniform1f(gl.getUniformLocation(defaultProgram, 'u_light'), wall.light)
 
           gl.bindBuffer(gl.ARRAY_BUFFER, wall.bottom.buffer)
 
-          gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
-          gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
+          gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_coords'))
+          gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
 
-          gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_texcoords'))
-          gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
+          gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_texcoords'))
+          gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
           gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
         }
@@ -566,6 +581,12 @@ fm.on('ready', async (fm) => {
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
 
+    const spritePosition = vec3.create()
+    const spriteProjectionView = mat4.create()
+    const spriteModel = mat4.create()
+
+    gl.useProgram(spriteProgram)
+
     // TODO: We should draw all the sprites in here, we also need to reorder
     // all the objects to do the alpha blending.
     for (const object of currentLevel.objects) {
@@ -575,43 +596,53 @@ fm.on('ready', async (fm) => {
 
         const { x, y, z } = object
 
-        /*
-        vec3.set(position, x, y, z)
+        vec3.set(spritePosition, -x, y, z)
 
-        mat4.identity(model)
-        mat4.translate(model, model, position)
-        // mat4.multiply(model, model, rotation)
-        // mat4.invert(view, model)
-        mat4.multiply(projectionView, projection, view)
+        mat4.identity(spriteModel)
+        mat4.translate(spriteModel, spriteModel, spritePosition)
+        mat4.multiply(spriteModel, spriteModel, rotation)
+        mat4.multiply(spriteProjectionView, projectionView, spriteModel)
 
-        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'u_mvp'), false, projectionViewModel)
-        */
+        gl.uniformMatrix4fv(gl.getUniformLocation(spriteProgram, 'u_mvp'), false, spriteProjectionView)
 
-        gl.uniform2f(
-          gl.getUniformLocation(program, 'u_texbase'),
-          1.0,
-          1.0
-        )
+        // gl.uniform2f(
+        //   gl.getUniformLocation(spriteProgram, 'u_texbase'),
+        //   64.0,
+        //   64.0
+        // )
 
         gl.activeTexture(gl.TEXTURE0)
 
         if (object.className === 'frame') {
-          gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames[object.data].texture)
+          if (object.logics.includes('BATTERY')) {
+            gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames.get('IBATTERY.FME').texture)
+          } else if (object.logics.includes('SUPERCHARGE')) {
+            gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames.get('ICHARGE.FME').texture)
+          } else if (object.logics.includes('MEDKIT')) {
+            gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames.get('IMEDKIT.FME').texture)
+          } else if (object.logics.includes('GOGGLES')) {
+            gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames.get('IGOGGLES.FME').texture)
+          } else if (object.logics.includes('RIFLE')) {
+            gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames.get('IST-GUNU.FME').texture)
+          } else if (object.logics.includes('ITEM ENERGY')) {
+            gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames.get('IENERGY.FME').texture)
+          }
+          //gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames[object.data].texture)
         } else if (object.className === 'sprite') {
           gl.bindTexture(gl.TEXTURE_2D, currentLevel.sprites[object.data].states[0].angles[0].frames[0].fme.texture)
         }
-        //gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.floor.texture.index].texture)
+        // gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.floor.texture.index].texture)
 
-        gl.uniform1i(gl.getUniformLocation(program, 'u_sampler'), 0)
-        gl.uniform1f(gl.getUniformLocation(program, 'u_light'), 1.0)
+        // gl.uniform1i(gl.getUniformLocation(spriteProgram, 'u_sampler'), 0)
+        // gl.uniform1f(gl.getUniformLocation(spriteProgram, 'u_light'), 1.0)
 
         gl.bindBuffer(gl.ARRAY_BUFFER, spriteBuffer)
 
-        gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_coords'))
-        gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
+        gl.enableVertexAttribArray(gl.getAttribLocation(spriteProgram, 'a_coords'))
+        gl.vertexAttribPointer(gl.getAttribLocation(spriteProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
 
-        gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_texcoords'))
-        gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
+        gl.enableVertexAttribArray(gl.getAttribLocation(spriteProgram, 'a_texcoords'))
+        gl.vertexAttribPointer(gl.getAttribLocation(spriteProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
         gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
 
@@ -645,10 +676,13 @@ fm.on('ready', async (fm) => {
       isDirty = false
     }
 
+    // Establece la matriz de rotación de la vista
+    // a partir de la dirección vertical y horizontal.
     mat4.identity(rotation)
     mat4.rotateY(rotation, rotation, direction[1])
     mat4.rotateX(rotation, rotation, direction[0])
 
+    //
     mat4.identity(model)
     mat4.translate(model, model, position)
     mat4.multiply(model, model, rotation)
@@ -661,11 +695,11 @@ fm.on('ready', async (fm) => {
     gl.disable(gl.CULL_FACE)
     gl.enable(gl.DEPTH_TEST)
 
-    gl.useProgram(program)
+    gl.useProgram(defaultProgram)
 
-    gl.uniform4f(gl.getUniformLocation(program, 'u_fogColor'), ...fogColor)
+    gl.uniform4f(gl.getUniformLocation(defaultProgram, 'u_fogColor'), ...fogColor)
 
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'u_mvp'), false, projectionView)
+    gl.uniformMatrix4fv(gl.getUniformLocation(defaultProgram, 'u_mvp'), false, projectionView)
 
     /**
      * @see https: //stackoverflow.com/questions/25422846/how-to-force-opengl-to-draw-a-non-convex-filled-polygon
@@ -691,6 +725,8 @@ fm.on('ready', async (fm) => {
 
     // gl.enable(gl.CULL_FACE)
     // gl.cullFace(gl.FRONT)
+
+    gl.disable(gl.DEPTH_TEST)
 
     renderObjects()
 
@@ -901,7 +937,9 @@ fm.on('ready', async (fm) => {
       cx.fillText(`- Box: ${currentSector.boundingBox.join(', ')}`, 0, textY += 16)
     }
 
-    cx.putImageData(currentLevel.frames[1].imageData, 0, 0)
+    // TODO: Arreglar la lectura de los otros FME porque sólo
+    // funciona con el supercharge.
+    cx.putImageData(currentLevel.frames.get('ICHARGE.FME').imageData, 0, 0)
   }
 
   let frameID
