@@ -1,6 +1,6 @@
 import { vec3, mat4 } from 'gl-matrix'
 
-import level, { getCurrentSector } from './level'
+import level, { getCurrentSector, signedDistanceToWall, isPositionOnWall } from './level'
 
 // File Manager
 import FileManager from './files/FileManager'
@@ -53,15 +53,26 @@ fm.on('ready', async (fm) => {
   const { fogColor } = currentLevel
   const engine = document.querySelector('canvas#engine')
   const debug = document.querySelector('canvas#debug')
-  const gl = engine.getContext('webgl', { antialias: false })
+  const gl = engine.getContext('webgl2', { antialias: false })
   const cx = debug.getContext('2d', { antialias: false })
 
+  const LOOK_UPDOWN_LIMIT = 1.0
+  const DEFAULT_ZOOM = 20
+  const DEFAULT_LAYER = 0
+  const MIN_ZOOM = 0
+  const MAX_ZOOM = 20
+  const MIN_LAYER = -9
+  const MAX_LAYER = 9
+
+  const ORIGIN = vec3.fromValues(0, 0, 0)
   const UP = vec3.fromValues(0, -1, 0)
   const DOWN = vec3.fromValues(0, 1, 0)
   const FORWARD = vec3.fromValues(0, 0, -1)
   const BACKWARD = vec3.fromValues(0, 0, 1)
   const STRAFE_LEFT = vec3.fromValues(-1, 0, 0)
   const STRAFE_RIGHT = vec3.fromValues(1, 0, 0)
+  const MOVEMENT_SCALE = 0.1
+  const KYLE_HEIGHT = 5.8
 
   const TEXTURE_BASE = 8
 
@@ -75,11 +86,12 @@ fm.on('ready', async (fm) => {
   const strafeLeft = vec3.fromValues(-1, 0, 0)
   const strafeRight = vec3.fromValues(1, 0, 0)
   const scaledMovement = vec3.create()
-  let zoom = 4.0
-  let currentLayer = 0
+  let zoom = DEFAULT_ZOOM
+  let currentLayer = DEFAULT_LAYER
   let currentSector = null
   const velocity = vec3.create()
   const position = vec3.create()
+  const nextPosition = vec3.create()
   const direction = vec3.create()
   const projection = mat4.create()
   const model = mat4.create()
@@ -159,6 +171,8 @@ fm.on('ready', async (fm) => {
   }
   log.write('All sprites uploaded')
 
+  window.currentLevel = currentLevel
+
   function input(time) {
     // Obtenemos el estado de los mandos.
     gamepad.update(time)
@@ -173,6 +187,35 @@ fm.on('ready', async (fm) => {
       direction[0] += gamepad.rightStick[1] * 0.125
       direction[1] += -gamepad.rightStick[0] * 0.125
     }
+
+    // TODO: Esto lo que hace es "limitar" la vista del
+    // jugador en el eje X, es decir, hacia arriba y hacia
+    // abajo. He puesto este límite de momento para probar.
+    // TODO: Hacer que esto no esté activo en modo dios pero
+    // sí en modo de juego.
+    if (direction[0] < -LOOK_UPDOWN_LIMIT) {
+      direction[0] = -LOOK_UPDOWN_LIMIT
+    } else if (direction[0] > LOOK_UPDOWN_LIMIT) {
+      direction[0] = LOOK_UPDOWN_LIMIT
+    }
+
+    if (isGameMode) {
+      vec3.rotateY(forward, FORWARD, ORIGIN, direction[1])
+      vec3.rotateY(backward, BACKWARD, ORIGIN, direction[1])
+      vec3.rotateY(strafeLeft, STRAFE_LEFT, ORIGIN, direction[1])
+      vec3.rotateY(strafeRight, STRAFE_RIGHT, ORIGIN, direction[1])
+    } else {
+      vec3.transformMat4(forward, FORWARD, rotation)
+      vec3.transformMat4(backward, BACKWARD, rotation)
+      vec3.transformMat4(strafeLeft, STRAFE_LEFT, rotation)
+      vec3.transformMat4(strafeRight, STRAFE_RIGHT, rotation)
+    }
+
+    // Impedimos que el juego vaya excesivamente rápido
+    vec3.scale(forward, forward, MOVEMENT_SCALE)
+    vec3.scale(backward, backward, MOVEMENT_SCALE)
+    vec3.scale(strafeLeft, strafeLeft, MOVEMENT_SCALE)
+    vec3.scale(strafeRight, strafeRight, MOVEMENT_SCALE)
 
     if (touchpad.isPressed('LeftStickLeft')) {
       vec3.scale(scaledMovement, strafeLeft, Math.abs(touchpad.leftStick[0]))
@@ -235,21 +278,21 @@ fm.on('ready', async (fm) => {
 
     // TODO: Set a max/min zoom level
     if (keyboard.isPressed('BracketLeft')) {
-      if (zoom > 0) {
+      if (zoom > MIN_ZOOM) {
         zoom--
       }
     } else if (keyboard.isPressed('BracketRight')) {
-      if (zoom < 9) {
+      if (zoom < MAX_ZOOM) {
         zoom++
       }
     }
 
     if (keyboard.isPressed('KeyZ')) {
-      if (currentLayer > -9) {
+      if (currentLayer > MIN_LAYER) {
         currentLayer--
       }
     } else if (keyboard.isPressed('KeyX')) {
-      if (currentLayer < 9) {
+      if (currentLayer < MAX_LAYER) {
         currentLayer++
       }
     }
@@ -260,48 +303,115 @@ fm.on('ready', async (fm) => {
   }
 
   function update() {
-    vec3.transformMat4(forward, FORWARD, rotation)
-    vec3.transformMat4(backward, BACKWARD, rotation)
-    vec3.transformMat4(strafeLeft, STRAFE_LEFT, rotation)
-    vec3.transformMat4(strafeRight, STRAFE_RIGHT, rotation)
 
-    vec3.add(position, position, velocity)
-    vec3.scale(velocity, velocity, 0.9)
+    if (isGameMode) {
 
-    // This function retrieves the current sector.
-    currentSector = getCurrentSector(position, currentLevel.sectors)
+      if (currentSector === null) {
+        currentSector = getCurrentSector(position, currentLevel.sectors)
+        if (currentSector === null) {
+          throw new Error('Invalid level')
+        }
+      }
 
-    // Change layer automatically to current sector layer if
-    // currentSector is different to null.
-    if (currentSector !== null) {
+      if (currentSector.floor.altitude > position[1] + KYLE_HEIGHT) {
+        velocity[1] += 0.1
+      } else {
+        position[1] = currentSector.floor.altitude - KYLE_HEIGHT
+      }
+
+      vec3.add(nextPosition, position, velocity)
+      vec3.scale(velocity, velocity, 0.9)
+
+      // Por cada pared del sector actual...
+      for (const wall of currentSector.walls) {
+
+        // Proyectamos el punto sobre la pared para saber si
+        // el punto está contenido dentro de la pared.
+        const isOnWall = isPositionOnWall(nextPosition, currentSector, wall)
+        if (isOnWall) {
+
+          // Si el punto está contenido dentro de la pared entonces
+          // obtenemos la distancia del punto a la pared para saber si
+          // el punto colisiona con la pared.
+          const distance = wall.distance = signedDistanceToWall(nextPosition, currentSector, wall)
+
+          // Si la pared es "caminable" entonces lo que hacemos es
+          // tener en cuenta si la distancia es mayor o igual a 0,
+          // si es así, significa que hemos atravesado el portal y
+          // que nos encontramos al otro lado del portal.
+          if (wall.walk !== -1 && distance >= 0) {
+
+            // Obtenemos el nuevo sector.
+            const nextSector = currentLevel.sectors[wall.walk]
+
+            // Y ajustamos la altura.
+            if (nextSector.floor.altitude < position[1]) {
+              position[1] = nextSector.floor.altitude + KYLE_HEIGHT
+            }
+
+            // Actualizamos el sector.
+            currentSector = nextSector
+            break
+
+          // Esta pared no se puede atravesar, así que
+          // comprobamos a qué distancia se encuentra
+          // y "empujamos" al jugador hacia fuera.
+          } else if (distance > -0.5) {
+
+            nextPosition[0] += wall.normal[0] * 0.1
+            nextPosition[2] += wall.normal[1] * 0.1
+
+          }
+        }
+      }
+
       currentLayer = currentSector.layer
+
+      vec3.copy(position, nextPosition)
+
+    } else {
+
+      vec3.add(position, position, velocity)
+      vec3.scale(velocity, velocity, 0.9)
+
+      // This function retrieves the current sector.
+      currentSector = getCurrentSector(position, currentLevel.sectors)
+
+      // Change layer automatically to current sector layer if
+      // currentSector is different to null.
+      if (currentSector !== null) {
+        currentLayer = currentSector.layer
+      }
     }
-
-    // TODO: We can update player position in here. BTW, maybe
-    // I can create a variable to manage how the user collides
-    // with the environment.
-
   }
 
   let isDirty = false
-    , isRenderEnabled = true
-    , isRenderFloorEnabled = true
-    , isRenderCeilingEnabled = false
-    , isRenderWallsEnabled = false
-    , isRenderObjectsEnabled = true
-    , isDebugEnabled = false
+  let isGameMode = true
+  let isRenderEnabled = true
+  let isRenderFloorEnabled = true
+  let isRenderCeilingEnabled = true
+  let isRenderWallsEnabled = true
+  let isRenderObjectsEnabled = true
+  let isRenderBoundingRectsEnabled = true
+  let isRenderWallIndexEnabled = true
+  let isRenderOnlyCurrentLayer = true
+  let isRenderOnlyCurrentSector = true
+  let isDebugEnabled = true
 
   function renderPlanes() {
     // TODO: Move this to a function called render sectors.
     for (const sector of currentLevel.sectors) {
-      /*
-      if (sector.layer !== currentLayer) {
+      if (sector.layer !== currentLayer && isRenderOnlyCurrentLayer) {
         continue
       }
-      */
+
+      if (sector !== currentSector && isRenderOnlyCurrentSector) {
+        continue
+      }
 
       // If there's floor texture, then we should render floor plane.
-      if (isRenderFloorEnabled && currentLevel.textures[sector.floor.texture.index]) {
+      if (isRenderFloorEnabled
+       && currentLevel.textures[sector.floor.texture.index]) {
         gl.uniform2f(
           gl.getUniformLocation(program, 'u_texbase'),
           currentLevel.textures[sector.floor.texture.index].width / TEXTURE_BASE,
@@ -321,14 +431,16 @@ fm.on('ready', async (fm) => {
         gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_texcoords'))
         gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sector.indexBuffer)
+        // gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sector.indexBuffer)
 
-        // gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.floor.geometry.length / 5)
-        gl.drawElements(gl.TRIANGLES, sector.indices.length, gl.UNSIGNED_SHORT, 0)
+        gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.floor.geometry.length / 5)
+        // gl.drawElements(gl.TRIANGLES, sector.indices.length, gl.UNSIGNED_SHORT, 0)
       }
 
       // If there's ceiling texture then we should rendering this sector.
-      if (isRenderCeilingEnabled && currentLevel.textures[sector.ceiling.texture.index] && !(sector.flags[0] & 0x01 === 0x01)) {
+      if (isRenderCeilingEnabled
+       && currentLevel.textures[sector.ceiling.texture.index]
+       && !(sector.flags[0] & 0x01 === 0x01)) {
         gl.uniform2f(
           gl.getUniformLocation(program, 'u_texbase'),
           currentLevel.textures[sector.ceiling.texture.index].width / TEXTURE_BASE,
@@ -348,10 +460,10 @@ fm.on('ready', async (fm) => {
         gl.enableVertexAttribArray(gl.getAttribLocation(program, 'a_texcoords'))
         gl.vertexAttribPointer(gl.getAttribLocation(program, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
-        // gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.ceiling.geometry.length / 5)
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sector.indexBuffer)
+        gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.ceiling.geometry.length / 5)
+        // gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sector.indexBuffer)
 
-        gl.drawElements(gl.TRIANGLES, sector.indices.length, gl.UNSIGNED_SHORT, 0)
+        // gl.drawElements(gl.TRIANGLES, sector.indices.length, gl.UNSIGNED_SHORT, 0)
       }
 
       // Renderiza las paredes del sector.
@@ -361,6 +473,10 @@ fm.on('ready', async (fm) => {
     }
   }
 
+  /**
+   * Renderiza las paredes de un sector
+   * @param {Sector} sector
+   */
   function renderWalls(sector) {
     // TODO: Move this code to a function called renderWalls
     for (const wall of sector.walls) {
@@ -440,6 +556,9 @@ fm.on('ready', async (fm) => {
     }
   }
 
+  /**
+   * Renders objects
+   */
   function renderObjects() {
     if (!isRenderObjectsEnabled) {
       return
@@ -456,12 +575,17 @@ fm.on('ready', async (fm) => {
 
         const { x, y, z } = object
 
+        /*
+        vec3.set(position, x, y, z)
+
         mat4.identity(model)
-        mat4.translate(model, model, [x, y, z])
+        mat4.translate(model, model, position)
         // mat4.multiply(model, model, rotation)
-        mat4.multiply(projectionViewModel, projectionView, model)
+        // mat4.invert(view, model)
+        mat4.multiply(projectionView, projection, view)
 
         gl.uniformMatrix4fv(gl.getUniformLocation(program, 'u_mvp'), false, projectionViewModel)
+        */
 
         gl.uniform2f(
           gl.getUniformLocation(program, 'u_texbase'),
@@ -499,6 +623,9 @@ fm.on('ready', async (fm) => {
     }
   }
 
+  /**
+   * Renders everything.
+   */
   function render() {
     if (gl.canvas.width !== gl.canvas.clientWidth) {
       gl.canvas.width = gl.canvas.clientWidth
@@ -529,7 +656,7 @@ fm.on('ready', async (fm) => {
     mat4.multiply(projectionView, projection, view)
 
     gl.clearColor(0, 0, 0, 1)
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
     gl.disable(gl.CULL_FACE)
     gl.enable(gl.DEPTH_TEST)
@@ -540,15 +667,39 @@ fm.on('ready', async (fm) => {
 
     gl.uniformMatrix4fv(gl.getUniformLocation(program, 'u_mvp'), false, projectionView)
 
+    /**
+     * @see https: //stackoverflow.com/questions/25422846/how-to-force-opengl-to-draw-a-non-convex-filled-polygon
+     * @see http: //www.glprogramming.com/red/chapter14.html#name13
+
+    gl.enable(gl.STENCIL_TEST)
+    gl.colorMask(gl.FALSE, gl.FALSE, gl.FALSE, gl.FALSE)
+    gl.stencilFunc(gl.ALWAYS, 0, 1)
+    gl.stencilOp(gl.KEEP, gl.KEEP, gl.INVERT)
+    gl.stencilMask(1)
+
     renderPlanes()
 
-    gl.enable(gl.CULL_FACE)
-    gl.cullFace(gl.FRONT)
+    gl.colorMask(gl.TRUE, gl.TRUE, gl.TRUE, gl.TRUE)
+    gl.stencilFunc(gl.EQUAL, 1, 1)
+    gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
+
+    */
+
+    renderPlanes()
+
+    // gl.disable(gl.STENCIL_TEST)
+
+    // gl.enable(gl.CULL_FACE)
+    // gl.cullFace(gl.FRONT)
 
     renderObjects()
 
   }
 
+  /**
+   * Renders debug information
+   * @param {number} time
+   */
   function renderDebug(time) {
     if (cx.canvas.width !== cx.canvas.clientWidth) {
       cx.canvas.width = cx.canvas.clientWidth
@@ -582,11 +733,13 @@ fm.on('ready', async (fm) => {
     cx.translate(scx - position[0] * zoom, scy - position[2] * zoom)
 
     for (const sector of currentLevel.sectors) {
-      /*
-      if (sector.layer !== currentLayer) {
+      if (sector.layer !== currentLayer && isRenderOnlyCurrentLayer) {
         continue
       }
-      */
+
+      if (sector !== currentSector && isRenderOnlyCurrentSector) {
+        continue
+      }
 
       let mx = 0
         , my = 0
@@ -594,9 +747,11 @@ fm.on('ready', async (fm) => {
       for (const wall of sector.walls) {
         const [sx, sy] = sector.vertices[wall.left]
         const [ex, ey] = sector.vertices[wall.right]
+
         cx.beginPath()
         cx.moveTo(sx * zoom, sy * zoom)
         cx.lineTo(ex * zoom, ey * zoom)
+
         if (sector === currentSector) {
           if (wall.adjoin !== -1) {
             cx.strokeStyle = '#770'
@@ -610,10 +765,21 @@ fm.on('ready', async (fm) => {
             cx.strokeStyle = '#0f0'
           }
         }
+
         mx += ex * zoom
         my += ey * zoom
 
         cx.stroke()
+
+        if (isRenderWallIndexEnabled) {
+          const tx = sx + (ex - sx) * 0.5
+          const ty = sy + (ey - sy) * 0.5
+          cx.font = '16px monospace'
+          cx.textAlign = 'center'
+          cx.textBaseline = 'middle'
+          cx.fillStyle = '#fff'
+          cx.fillText(`${wall.index} ${wall.distance && wall.distance.toFixed(2)}`, tx * zoom, ty * zoom)
+        }
       }
 
       mx /= sector.walls.length
@@ -628,13 +794,15 @@ fm.on('ready', async (fm) => {
       }
 
       // Renders the bounding box of the current sector.
-      cx.strokeStyle = sector === currentSector ? '#fff' : '#777'
-      cx.strokeRect(
-        sector.boundingRect[0] * zoom,
-        sector.boundingRect[2] * zoom,
-        sector.boundingRect[4] * zoom,
-        sector.boundingRect[5] * zoom,
-      )
+      if (isRenderBoundingRectsEnabled) {
+        cx.strokeStyle = sector === currentSector ? '#fff' : '#777'
+        cx.strokeRect(
+          sector.boundingRect[0] * zoom,
+          sector.boundingRect[2] * zoom,
+          sector.boundingRect[4] * zoom,
+          sector.boundingRect[5] * zoom,
+        )
+      }
 
       for (const [x, y] of sector.vertices) {
         const zx = x * zoom
@@ -710,21 +878,30 @@ fm.on('ready', async (fm) => {
     cx.textAlign = 'left'
     cx.textBaseline = 'top'
     cx.fillStyle = '#fff'
-    cx.fillText(`${frameID} ${time}`, 0, 0)
-    cx.fillText('KEYS', 0, 16)
-    cx.fillText('[] - Zoom', 0, 32)
-    cx.fillText(`W,A,S,D - Move ${gamepad.leftStick.join(',')}, ${gamepad.rightStick.join(',')}`, 0, 48)
-    cx.fillText('Q,E - Up/Down', 0, 64)
-    cx.fillText('Z,X - Up/Down layers', 0, 80)
 
+    let textY = 0
+    cx.fillText(`${frameID} ${time}`, 0, textY += 16)
+
+    // TODO: Esto debería mandarlo a otra parte
+    // de la interfaz.
+    cx.fillText('KEYS', 0, textY += 16)
+    cx.fillText('[] - Zoom', 0, textY += 16)
+    cx.fillText(`W,A,S,D - Move ${gamepad.leftStick.join(',')}, ${gamepad.rightStick.join(',')}`, 0, textY += 16)
+    cx.fillText('Q,E - Up/Down', 0, textY += 16)
+    cx.fillText('Z,X - Up/Down layers', 0, textY += 16)
+
+    cx.fillText(`${position.join(', ')}`, 0, textY += 16)
     if (currentSector !== null) {
-      cx.fillText(`Sector ${currentSector.index} ${currentSector.name} ${currentSector.layer}`, 0, 96)
-      cx.fillText(`- Flags: ${currentSector.flags.join(', ')}`, 0, 112)
-      cx.fillText(`- Light: ${currentSector.light}`, 0, 128)
-      cx.fillText(`- Floor: ${currentSector.floor.altitude} ${currentSector.floor.texture.index} ${currentSector.floor.texture.x} ${currentSector.floor.texture.y} ${currentSector.floor.texture.flags.toString(2)}`, 0, 144)
-      cx.fillText(`- Ceiling: ${currentSector.ceiling.altitude} ${currentSector.ceiling.texture.index} ${currentSector.ceiling.texture.x} ${currentSector.ceiling.texture.y} ${currentSector.ceiling.texture.flags.toString(2)}`, 0, 160)
-      cx.fillText(`- Rect: ${currentSector.boundingRect.join(',')}`, 0, 176)
+      cx.fillText(`Sector ${currentSector.index} ${currentSector.name} ${currentSector.layer}`, 0, textY += 16)
+      cx.fillText(`- Flags: ${currentSector.flags.join(', ')}`, 0, textY += 16)
+      cx.fillText(`- Light: ${currentSector.light}`, 0, textY += 16)
+      cx.fillText(`- Floor: ${currentSector.floor.altitude} ${currentSector.floor.texture.index} ${currentSector.floor.texture.x} ${currentSector.floor.texture.y} ${currentSector.floor.texture.flags.toString(2)}`, 0, textY += 16)
+      cx.fillText(`- Ceiling: ${currentSector.ceiling.altitude} ${currentSector.ceiling.texture.index} ${currentSector.ceiling.texture.x} ${currentSector.ceiling.texture.y} ${currentSector.ceiling.texture.flags.toString(2)}`, 0, textY += 16)
+      cx.fillText(`- Rect: ${currentSector.boundingRect.join(', ')}`, 0, textY += 16)
+      cx.fillText(`- Box: ${currentSector.boundingBox.join(', ')}`, 0, textY += 16)
     }
+
+    cx.putImageData(currentLevel.frames[1].imageData, 0, 0)
   }
 
   let frameID

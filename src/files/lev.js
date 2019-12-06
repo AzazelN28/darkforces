@@ -18,11 +18,7 @@ export function parse(dataView, start, size) {
       light: null,
       floor: null,
       ceiling: null,
-      floorTexture: null,
-      floorAltitude: null,
-      ceilingTexture: null,
-      ceilingAltitude: null,
-      secondAltitude: null,
+      second: null,
       vertexCount: null,
       vertices: [],
       wallCount: null,
@@ -142,7 +138,7 @@ export function parse(dataView, start, size) {
     },
     'sector-second-altitude': (line) => {
       const [altitude] = parseLine(' SECOND ALTITUDE {d}', line)
-      sector.secondAltitude = altitude
+      sector.second = { altitude }
       return 'sector-flags'
     },
     'sector-flags': (line) => {
