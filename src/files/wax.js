@@ -222,7 +222,7 @@ export function use(sprite, palette) {
   for (const state of sprite.states) {
     for (const angle of state.angles) {
       for (const frame of angle.frames) {
-        fme.use(frame, palette)
+        fme.use(frame.fme, palette)
       }
     }
   }

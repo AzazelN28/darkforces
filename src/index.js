@@ -121,10 +121,10 @@ fm.on('ready', async (fm) => {
   ]))
   */
   const spriteBuffer = createVertexBuffer(gl, new Float32Array([
-    -1.0, -1.0, 0.0, 0.0, 0.0,
-     1.0, -1.0, 0.0, 1.0, 0.0,
-     1.0,  1.0, 0.0, 1.0, 1.0,
-    -1.0,  1.0, 0.0, 0.0, 1.0,
+    -1.0, -2.0, 0.0, 0.0, 0.0,
+     1.0, -2.0, 0.0, 1.0, 0.0,
+     1.0,  0.0, 0.0, 1.0, 1.0,
+    -1.0,  0.0, 0.0, 0.0, 1.0,
   ]))
 
   // Sets the initial position.
@@ -362,44 +362,44 @@ fm.on('ready', async (fm) => {
         // Proyectamos el punto sobre la pared para saber si
         // el punto está contenido dentro de la pared.
         const isOnWall = isPositionOnWall(nextPosition, currentSector, wall)
-        if (isOnWall) {
+        if (!isOnWall) {
+          continue
+        }
 
-          // Si el punto está contenido dentro de la pared entonces
-          // obtenemos la distancia del punto a la pared para saber si
-          // el punto colisiona con la pared.
-          const distance = wall.distance = signedDistanceToWall(nextPosition, currentSector, wall)
+        // Si el punto está contenido dentro de la pared entonces
+        // obtenemos la distancia del punto a la pared para saber si
+        // el punto colisiona con la pared.
+        const distance = wall.distance = signedDistanceToWall(nextPosition, currentSector, wall)
 
-          const absoluteDistance = Math.abs(distance)
+        const absoluteDistance = Math.abs(distance)
 
-          // Si la pared es "caminable" entonces lo que hacemos es
-          // tener en cuenta si la distancia es mayor o igual a 0,
-          // si es así, significa que hemos atravesado el portal y
-          // que nos encontramos al otro lado del portal.
-          if (wall.walk !== -1 && distance > -0.5) {
+        // Si la pared es "caminable" entonces lo que hacemos es
+        // tener en cuenta si la distancia es mayor o igual a 0,
+        // si es así, significa que hemos atravesado el portal y
+        // que nos encontramos al otro lado del portal.
+        if (wall.walk !== -1 && distance > -0.5) {
 
-            // Obtenemos el nuevo sector.
-            const nextSector = currentLevel.sectors[wall.walk]
+          // Obtenemos el nuevo sector.
+          const nextSector = currentLevel.sectors[wall.walk]
 
-            // Y ajustamos la altura.
-            if (nextSector.floor.altitude < position[1]) {
-              nextPosition[1] = nextSector.floor.altitude + KYLE_HEIGHT
-            }
+          // Y ajustamos la altura.
+          if (nextSector.floor.altitude < position[1]) {
+            nextPosition[1] = nextSector.floor.altitude + KYLE_HEIGHT
+          }
 
-            // Actualizamos el sector.
-            currentSector = nextSector
-            break
+          // Actualizamos el sector.
+          currentSector = nextSector
+          break
 
-          } else {
+        } else {
 
-            // Esta pared no se puede atravesar, así que
-            // comprobamos a qué distancia se encuentra
-            // y "empujamos" al jugador hacia fuera.
-            if (distance > -0.5 && distance < 0.5) {
+          // Esta pared no se puede atravesar, así que
+          // comprobamos a qué distancia se encuentra
+          // y "empujamos" al jugador hacia fuera.
+          if (distance > -0.5 && distance < 0.5) {
 
-              nextPosition[0] += wall.normal[0] * -distance
-              nextPosition[2] += wall.normal[1] * -distance
-
-            }
+            nextPosition[0] += wall.normal[0] * -distance
+            nextPosition[2] += wall.normal[1] * -distance
 
           }
         }
@@ -718,22 +718,42 @@ fm.on('ready', async (fm) => {
         gl.activeTexture(gl.TEXTURE0)
 
         if (object.className === 'frame') {
+          let frame
           if (object.logics.includes('BATTERY')) {
-            gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames.get('IBATTERY.FME').texture)
+            frame = currentLevel.frames.get('IBATTERY.FME')
           } else if (object.logics.includes('SUPERCHARGE')) {
-            gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames.get('ICHARGE.FME').texture)
+            frame = currentLevel.frames.get('ICHARGE.FME')
           } else if (object.logics.includes('MEDKIT')) {
-            gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames.get('IMEDKIT.FME').texture)
+            frame = currentLevel.frames.get('IMEDKIT.FME')
           } else if (object.logics.includes('GOGGLES')) {
-            gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames.get('IGOGGLES.FME').texture)
+            frame = currentLevel.frames.get('IGOGGLES.FME')
           } else if (object.logics.includes('RIFLE')) {
-            gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames.get('IST-GUNU.FME').texture)
+            frame = currentLevel.frames.get('IGOGGLES.FME')
           } else if (object.logics.includes('ITEM ENERGY')) {
-            gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames.get('IENERGY.FME').texture)
+            frame = currentLevel.frames.get('IGOGGLES.FME')
           }
+          gl.bindTexture(gl.TEXTURE_2D, frame.texture)
+          gl.uniform2f(gl.getUniformLocation(spriteProgram, 'u_size'), frame.width, frame.height)
           //gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames[object.data].texture)
         } else if (object.className === 'sprite') {
-          gl.bindTexture(gl.TEXTURE_2D, currentLevel.sprites[object.data].states[0].angles[0].frames[0].fme.texture)
+
+          const sprite = currentLevel.sprites[object.data]
+          const angles = sprite.states[0].angles.length
+
+          const dx = Math.cos(-direction[1] + Math.PI * 0.5)
+          const dy = Math.sin(-direction[1] + Math.PI * 0.5)
+
+          const rx = x - position[0]
+          const ry = z - position[2]
+          const r = Math.hypot(rx, ry)
+
+          const dot = dx * rx/r + dy * ry/r
+
+          const angle = Math.round(Math.abs(dot * sprite.states[0].angles.length))
+
+          let frame = sprite.states[0].angles[0].frames[0].fme
+          gl.bindTexture(gl.TEXTURE_2D, frame.texture)
+          gl.uniform2f(gl.getUniformLocation(spriteProgram, 'u_size'), frame.width, frame.height)
         }
         // gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.floor.texture.index].texture)
 
@@ -762,13 +782,13 @@ fm.on('ready', async (fm) => {
    * Renders everything.
    */
   function render() {
-    if (gl.canvas.width !== gl.canvas.clientWidth) {
-      gl.canvas.width = gl.canvas.clientWidth
+    if (gl.canvas.width !== gl.canvas.clientWidth * window.devicePixelRatio) {
+      gl.canvas.width = gl.canvas.clientWidth * window.devicePixelRatio
       isDirty = true
     }
 
-    if (gl.canvas.height !== gl.canvas.clientHeight) {
-      gl.canvas.height = gl.canvas.clientHeight
+    if (gl.canvas.height !== gl.canvas.clientHeight * window.devicePixelRatio) {
+      gl.canvas.height = gl.canvas.clientHeight * window.devicePixelRatio
       isDirty = true
     }
 
@@ -834,9 +854,14 @@ fm.on('ready', async (fm) => {
     // gl.enable(gl.CULL_FACE)
     // gl.cullFace(gl.FRONT)
 
-    gl.disable(gl.DEPTH_TEST)
+    // gl.disable(gl.DEPTH_TEST)
+
+    gl.enable(gl.BLEND)
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 
     renderObjects()
+
+    gl.disable(gl.BLEND)
 
   }
 
@@ -1062,7 +1087,8 @@ fm.on('ready', async (fm) => {
 
     // TODO: Arreglar la lectura de los otros FME porque sólo
     // funciona con el supercharge.
-    cx.putImageData(currentLevel.frames.get('ICHARGE.FME').imageData, 0, 0)
+    // cx.putImageData(currentLevel.frames.get('ICHARGE.FME').imageData, 0, 0)
+    cx.putImageData(currentLevel.sprites[0].states[0].angles[0].frames[0].fme.imageData, 0, 0)
   }
 
   let frameID

@@ -35,8 +35,13 @@ export function createFragmentShader(gl, source) {
   return createShader(gl, gl.FRAGMENT_SHADER, source)
 }
 
+export function deleteShader(gl, shader) {
+  gl.deleteShader(shader)
+}
+
 export default {
   createShader,
   createVertexShader,
-  createFragmentShader
+  createFragmentShader,
+  deleteShader
 }
