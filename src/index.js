@@ -66,6 +66,7 @@ fm.on('ready', async (fm) => {
   const MAX_ZOOM = 20
   const MIN_LAYER = -9
   const MAX_LAYER = 9
+  const MAX_VISIBLE_SECTORS = 128
 
   const ORIGIN = vec3.fromValues(0, 0, 0)
   const UP = vec3.fromValues(0, -1, 0)
@@ -74,7 +75,7 @@ fm.on('ready', async (fm) => {
   const BACKWARD = vec3.fromValues(0, 0, 1)
   const STRAFE_LEFT = vec3.fromValues(-1, 0, 0)
   const STRAFE_RIGHT = vec3.fromValues(1, 0, 0)
-  const MOVEMENT_SCALE = 0.1
+  const MOVEMENT_SCALE = 0.05
   const KYLE_HEIGHT = 5.8
 
   const TEXTURE_BASE = 8
@@ -83,10 +84,16 @@ fm.on('ready', async (fm) => {
   const DEBUG_VERTEX_HALF_SIZE = DEBUG_VERTEX_SIZE >> 1
 
   let zoom = DEFAULT_ZOOM
+  let lastTime = 0
+  let previousTime = 0
+  let timeAccumulator = 0
 
   // Información del jugador.
   let currentLayer = DEFAULT_LAYER
   let currentSector = null
+  const sectorsToVisit = []
+  const visibleSectors = new Set()
+  const visibleWalls = new Set()
   let shield = 100
   let health = 100
   let battery = 100
@@ -316,7 +323,10 @@ fm.on('ready', async (fm) => {
     }
   }
 
-  function update() {
+  /**
+   * Actualizamos el comportamiento del juego.
+   */
+  function update(time) {
 
     if (isGameMode) {
 
@@ -335,7 +345,17 @@ fm.on('ready', async (fm) => {
 
       vec3.add(nextPosition, position, velocity)
       vec3.scale(velocity, velocity, 0.9)
+      if (velocity[0] > -0.01 && velocity[0] < 0.01) {
+        velocity[0] = 0
+      }
+      if (velocity[1] > -0.01 && velocity[1] < 0.01) {
+        velocity[1] = 0
+      }
+      if (velocity[2] > -0.01 && velocity[2] < 0.01) {
+        velocity[2] = 0
+      }
 
+      // Esto debería ser algo así como "checkSectorCollisions"
       // Por cada pared del sector actual...
       for (const wall of currentSector.walls) {
 
@@ -348,33 +368,38 @@ fm.on('ready', async (fm) => {
           // obtenemos la distancia del punto a la pared para saber si
           // el punto colisiona con la pared.
           const distance = wall.distance = signedDistanceToWall(nextPosition, currentSector, wall)
+
           const absoluteDistance = Math.abs(distance)
 
           // Si la pared es "caminable" entonces lo que hacemos es
           // tener en cuenta si la distancia es mayor o igual a 0,
           // si es así, significa que hemos atravesado el portal y
           // que nos encontramos al otro lado del portal.
-          if (wall.walk !== -1 && distance >= 0) {
+          if (wall.walk !== -1 && distance > -0.5) {
 
             // Obtenemos el nuevo sector.
             const nextSector = currentLevel.sectors[wall.walk]
 
             // Y ajustamos la altura.
             if (nextSector.floor.altitude < position[1]) {
-              position[1] = nextSector.floor.altitude + KYLE_HEIGHT
+              nextPosition[1] = nextSector.floor.altitude + KYLE_HEIGHT
             }
 
             // Actualizamos el sector.
             currentSector = nextSector
             break
 
-          // Esta pared no se puede atravesar, así que
-          // comprobamos a qué distancia se encuentra
-          // y "empujamos" al jugador hacia fuera.
-          } else if (distance > -0.5) {
+          } else {
 
-            nextPosition[0] += wall.normal[0] * absoluteDistance
-            nextPosition[2] += wall.normal[1] * absoluteDistance
+            // Esta pared no se puede atravesar, así que
+            // comprobamos a qué distancia se encuentra
+            // y "empujamos" al jugador hacia fuera.
+            if (distance > -0.5 && distance < 0.5) {
+
+              nextPosition[0] += wall.normal[0] * -distance
+              nextPosition[2] += wall.normal[1] * -distance
+
+            }
 
           }
         }
@@ -383,6 +408,8 @@ fm.on('ready', async (fm) => {
       currentLayer = currentSector.layer
 
       vec3.copy(position, nextPosition)
+
+      previousTime = time
 
     } else {
 
@@ -400,6 +427,63 @@ fm.on('ready', async (fm) => {
     }
   }
 
+  /**
+   * Gets all the visible sectors based on what the player
+   * is seeing.
+   * @param {number} time
+   */
+  function visibility(time) {
+    visibleSectors.clear()
+    visibleWalls.clear()
+    if (currentSector) {
+      sectorsToVisit.push(currentSector)
+      visibleSectors.add(currentSector)
+    }
+    while (sectorsToVisit.length > 0) {
+      const sector = sectorsToVisit.shift()
+      for (const wall of sector.walls) {
+        // @see https://codepen.io/AzazelN28/pen/GRgZKxR?editors=0010
+        // wall.start = player.direction[0] * (sx - player.position[0]) + player.direction[1] * (sy - player.position[1])
+        // wall.end = player.direction[0] * (ex - player.position[0]) + player.direction[1] * (ey - player.position[1])
+        const dx = Math.cos(-direction[1] + Math.PI * 0.5)
+        const dy = Math.sin(-direction[1] + Math.PI * 0.5)
+
+        const left = sector.vertices[wall.left]
+        const right = sector.vertices[wall.right]
+
+        const rsx = left[0] - position[0]
+        const rsy = left[1] - position[2]
+
+        const rex = right[0] - position[0]
+        const rey = right[1] - position[2]
+
+        const leftDot = dx * rsx + dy * rsy
+        const rightDot = dx * rex + dy * rey
+
+        const isMirror = wall.mirror !== -1
+        const isMirrorVisible = isMirror
+          ? visibleWalls.has(currentLevel.sectors[wall.adjoin].walls[wall.mirror])
+          : false
+
+        const isVisible = (leftDot < 0
+                     || rightDot < 0)
+                     && !isMirrorVisible
+
+        if (isVisible) {
+          visibleWalls.add(wall)
+        }
+
+        if (wall.adjoin !== -1 && isVisible) {
+          const sectorToVisit = currentLevel.sectors[wall.adjoin]
+          if (!visibleSectors.has(sectorToVisit) && visibleSectors.size < MAX_VISIBLE_SECTORS) {
+            visibleSectors.add(sectorToVisit)
+            sectorsToVisit.push(sectorToVisit)
+          }
+        }
+      }
+    }
+  }
+
   let isDirty = false
   let isGameMode = true
   let isRenderEnabled = true
@@ -411,34 +495,111 @@ fm.on('ready', async (fm) => {
   let isRenderWallIndexEnabled = true
   let isRenderOnlyCurrentLayer = true
   let isRenderOnlyCurrentSector = true
+  let isRenderOnlyVisibleSectors = true
   let isDebugEnabled = true
 
-  function renderPlanes() {
-    // TODO: Move this to a function called render sectors.
-    for (const sector of currentLevel.sectors) {
-      if (sector.layer !== currentLayer && isRenderOnlyCurrentLayer) {
-        continue
-      }
+  function renderSector(sector) {
+    // If there's floor texture, then we should render floor plane.
+    if (isRenderFloorEnabled
+      && currentLevel.textures[sector.floor.texture.index]) {
+      gl.uniform2f(
+        gl.getUniformLocation(defaultProgram, 'u_texbase'),
+        currentLevel.textures[sector.floor.texture.index].width / TEXTURE_BASE,
+        currentLevel.textures[sector.floor.texture.index].height / TEXTURE_BASE
+      )
 
-      if (sector !== currentSector && isRenderOnlyCurrentSector) {
-        continue
-      }
+      gl.activeTexture(gl.TEXTURE0)
+      gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.floor.texture.index].texture)
+      gl.uniform1i(gl.getUniformLocation(defaultProgram, 'u_sampler'), 0)
+      gl.uniform1f(gl.getUniformLocation(defaultProgram, 'u_light'), sector.light)
 
-      // If there's floor texture, then we should render floor plane.
-      if (isRenderFloorEnabled
-       && currentLevel.textures[sector.floor.texture.index]) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, sector.floor.buffer)
+
+      gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_coords'))
+      gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
+
+      gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_texcoords'))
+      gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
+
+      // gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sector.indexBuffer)
+
+      gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.floor.geometry.length / 5)
+      // gl.drawElements(gl.TRIANGLES, sector.indices.length, gl.UNSIGNED_SHORT, 0)
+    }
+
+    // If there's ceiling texture then we should rendering this sector.
+    if (isRenderCeilingEnabled
+      && currentLevel.textures[sector.ceiling.texture.index]
+      && !(sector.flags[0] & 0x01 === 0x01)) {
+      gl.uniform2f(
+        gl.getUniformLocation(defaultProgram, 'u_texbase'),
+        currentLevel.textures[sector.ceiling.texture.index].width / TEXTURE_BASE,
+        currentLevel.textures[sector.ceiling.texture.index].height / TEXTURE_BASE
+      )
+
+      gl.activeTexture(gl.TEXTURE0)
+      gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.ceiling.texture.index].texture)
+      gl.uniform1i(gl.getUniformLocation(defaultProgram, 'u_sampler'), 0)
+      gl.uniform1f(gl.getUniformLocation(defaultProgram, 'u_light'), sector.light)
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, sector.ceiling.buffer)
+
+      gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_coords'))
+      gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
+
+      gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_texcoords'))
+      gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
+
+      gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.ceiling.geometry.length / 5)
+      // gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sector.indexBuffer)
+
+      // gl.drawElements(gl.TRIANGLES, sector.indices.length, gl.UNSIGNED_SHORT, 0)
+    }
+
+    // Renderiza las paredes del sector.
+    if (isRenderWallsEnabled) {
+      renderWalls(sector)
+    }
+  }
+
+  /**
+   * Renderiza los sectores
+   */
+  function renderSectors() {
+    if (isRenderOnlyVisibleSectors) {
+      for (const sector of visibleSectors) {
+        renderSector(sector)
+      }
+    } else {
+      // TODO: Move this to a function called render sectors.
+      for (const sector of currentLevel.sectors) {
+        if (sector.layer !== currentLayer && isRenderOnlyCurrentLayer) {
+          continue
+        }
+        if (sector !== currentSector && isRenderOnlyCurrentSector) {
+          continue
+        }
+        renderSector(sector)
+      }
+    }
+  }
+
+  function renderWall(wall) {
+    if (wall.mid.buffer) {
+      if (currentLevel.textures[wall.mid.texture]) {
+
         gl.uniform2f(
           gl.getUniformLocation(defaultProgram, 'u_texbase'),
-          currentLevel.textures[sector.floor.texture.index].width / TEXTURE_BASE,
-          currentLevel.textures[sector.floor.texture.index].height / TEXTURE_BASE
+          currentLevel.textures[wall.mid.texture].width / TEXTURE_BASE,
+          currentLevel.textures[wall.mid.texture].height / TEXTURE_BASE
         )
 
         gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.floor.texture.index].texture)
+        gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.mid.texture].texture)
         gl.uniform1i(gl.getUniformLocation(defaultProgram, 'u_sampler'), 0)
-        gl.uniform1f(gl.getUniformLocation(defaultProgram, 'u_light'), sector.light)
+        gl.uniform1f(gl.getUniformLocation(defaultProgram, 'u_light'), wall.light)
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, sector.floor.buffer)
+        gl.bindBuffer(gl.ARRAY_BUFFER, wall.mid.buffer)
 
         gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_coords'))
         gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
@@ -446,28 +607,23 @@ fm.on('ready', async (fm) => {
         gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_texcoords'))
         gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
-        // gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sector.indexBuffer)
-
-        gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.floor.geometry.length / 5)
-        // gl.drawElements(gl.TRIANGLES, sector.indices.length, gl.UNSIGNED_SHORT, 0)
+        gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
       }
+    } else {
+      if (currentLevel.textures[wall.top.texture]) {
 
-      // If there's ceiling texture then we should rendering this sector.
-      if (isRenderCeilingEnabled
-       && currentLevel.textures[sector.ceiling.texture.index]
-       && !(sector.flags[0] & 0x01 === 0x01)) {
         gl.uniform2f(
           gl.getUniformLocation(defaultProgram, 'u_texbase'),
-          currentLevel.textures[sector.ceiling.texture.index].width / TEXTURE_BASE,
-          currentLevel.textures[sector.ceiling.texture.index].height / TEXTURE_BASE
+          currentLevel.textures[wall.top.texture].width / TEXTURE_BASE,
+          currentLevel.textures[wall.top.texture].height / TEXTURE_BASE
         )
 
         gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.ceiling.texture.index].texture)
+        gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.top.texture].texture)
         gl.uniform1i(gl.getUniformLocation(defaultProgram, 'u_sampler'), 0)
-        gl.uniform1f(gl.getUniformLocation(defaultProgram, 'u_light'), sector.light)
+        gl.uniform1f(gl.getUniformLocation(defaultProgram, 'u_light'), wall.light)
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, sector.ceiling.buffer)
+        gl.bindBuffer(gl.ARRAY_BUFFER, wall.top.buffer)
 
         gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_coords'))
         gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
@@ -475,98 +631,46 @@ fm.on('ready', async (fm) => {
         gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_texcoords'))
         gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
 
-        gl.drawArrays(gl.TRIANGLE_FAN, 0, sector.ceiling.geometry.length / 5)
-        // gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sector.indexBuffer)
-
-        // gl.drawElements(gl.TRIANGLES, sector.indices.length, gl.UNSIGNED_SHORT, 0)
+        gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
       }
 
-      // Renderiza las paredes del sector.
-      if (isRenderWallsEnabled) {
-        renderWalls(sector)
+      if (currentLevel.textures[wall.bottom.texture]) {
+
+        gl.uniform2f(
+          gl.getUniformLocation(defaultProgram, 'u_texbase'),
+          currentLevel.textures[wall.bottom.texture].width / TEXTURE_BASE,
+          currentLevel.textures[wall.bottom.texture].height / TEXTURE_BASE
+        )
+
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.bottom.texture].texture)
+        gl.uniform1i(gl.getUniformLocation(defaultProgram, 'u_sampler'), 0)
+        gl.uniform1f(gl.getUniformLocation(defaultProgram, 'u_light'), wall.light)
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, wall.bottom.buffer)
+
+        gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_coords'))
+        gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
+
+        gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_texcoords'))
+        gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
+
+        gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
       }
     }
   }
 
   /**
-   * Renderiza las paredes de un sector
+   * Renders sector walls
    * @param {Sector} sector
    */
   function renderWalls(sector) {
-    // TODO: Move this code to a function called renderWalls
     for (const wall of sector.walls) {
-      if (wall.mid.buffer) {
-        if (currentLevel.textures[wall.mid.texture]) {
-
-          gl.uniform2f(
-            gl.getUniformLocation(defaultProgram, 'u_texbase'),
-            currentLevel.textures[wall.mid.texture].width / TEXTURE_BASE,
-            currentLevel.textures[wall.mid.texture].height / TEXTURE_BASE
-          )
-
-          gl.activeTexture(gl.TEXTURE0)
-          gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.mid.texture].texture)
-          gl.uniform1i(gl.getUniformLocation(defaultProgram, 'u_sampler'), 0)
-          gl.uniform1f(gl.getUniformLocation(defaultProgram, 'u_light'), wall.light)
-
-          gl.bindBuffer(gl.ARRAY_BUFFER, wall.mid.buffer)
-
-          gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_coords'))
-          gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
-
-          gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_texcoords'))
-          gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
-
-          gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
-        }
-      } else {
-        if (currentLevel.textures[wall.top.texture]) {
-
-          gl.uniform2f(
-            gl.getUniformLocation(defaultProgram, 'u_texbase'),
-            currentLevel.textures[wall.top.texture].width / TEXTURE_BASE,
-            currentLevel.textures[wall.top.texture].height / TEXTURE_BASE
-          )
-
-          gl.activeTexture(gl.TEXTURE0)
-          gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.top.texture].texture)
-          gl.uniform1i(gl.getUniformLocation(defaultProgram, 'u_sampler'), 0)
-          gl.uniform1f(gl.getUniformLocation(defaultProgram, 'u_light'), wall.light)
-
-          gl.bindBuffer(gl.ARRAY_BUFFER, wall.top.buffer)
-
-          gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_coords'))
-          gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
-
-          gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_texcoords'))
-          gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
-
-          gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
-        }
-
-        if (currentLevel.textures[wall.bottom.texture]) {
-
-          gl.uniform2f(
-            gl.getUniformLocation(defaultProgram, 'u_texbase'),
-            currentLevel.textures[wall.bottom.texture].width / TEXTURE_BASE,
-            currentLevel.textures[wall.bottom.texture].height / TEXTURE_BASE
-          )
-
-          gl.activeTexture(gl.TEXTURE0)
-          gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[wall.bottom.texture].texture)
-          gl.uniform1i(gl.getUniformLocation(defaultProgram, 'u_sampler'), 0)
-          gl.uniform1f(gl.getUniformLocation(defaultProgram, 'u_light'), wall.light)
-
-          gl.bindBuffer(gl.ARRAY_BUFFER, wall.bottom.buffer)
-
-          gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_coords'))
-          gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
-
-          gl.enableVertexAttribArray(gl.getAttribLocation(defaultProgram, 'a_texcoords'))
-          gl.vertexAttribPointer(gl.getAttribLocation(defaultProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
-
-          gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
-        }
+      // TODO: Change this to something like wall.isVisible
+      // and make a better calculation for what sector is
+      // actually rendered (not only checking dot product).
+      if (visibleWalls.has(wall)) {
+        renderWall(wall)
       }
     }
   }
@@ -692,7 +796,11 @@ fm.on('ready', async (fm) => {
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-    gl.disable(gl.CULL_FACE)
+    /*
+    gl.enable(gl.CULL_FACE)
+    gl.cullFace(gl.BACK_FACE)
+    */
+
     gl.enable(gl.DEPTH_TEST)
 
     gl.useProgram(defaultProgram)
@@ -711,7 +819,7 @@ fm.on('ready', async (fm) => {
     gl.stencilOp(gl.KEEP, gl.KEEP, gl.INVERT)
     gl.stencilMask(1)
 
-    renderPlanes()
+    renderSectors()
 
     gl.colorMask(gl.TRUE, gl.TRUE, gl.TRUE, gl.TRUE)
     gl.stencilFunc(gl.EQUAL, 1, 1)
@@ -719,7 +827,7 @@ fm.on('ready', async (fm) => {
 
     */
 
-    renderPlanes()
+    renderSectors()
 
     // gl.disable(gl.STENCIL_TEST)
 
@@ -729,6 +837,10 @@ fm.on('ready', async (fm) => {
     gl.disable(gl.DEPTH_TEST)
 
     renderObjects()
+
+  }
+
+  function renderDebugPlayer() {
 
   }
 
@@ -761,8 +873,11 @@ fm.on('ready', async (fm) => {
     cx.lineTo(0, 4)
     cx.lineTo(0, -4)
     cx.lineTo(-8, 0)
+    cx.closePath()
+    cx.fillStyle = '#f0f'
     cx.strokeStyle = '#f0f'
     cx.stroke()
+    cx.fill()
     cx.restore()
 
     cx.save()
@@ -790,9 +905,9 @@ fm.on('ready', async (fm) => {
 
         if (sector === currentSector) {
           if (wall.adjoin !== -1) {
-            cx.strokeStyle = '#770'
+            cx.strokeStyle = '#070'
           } else {
-            cx.strokeStyle = '#ff0'
+            cx.strokeStyle = '#0f0'
           }
         } else {
           if (wall.adjoin !== -1) {
@@ -813,8 +928,9 @@ fm.on('ready', async (fm) => {
           cx.font = '16px monospace'
           cx.textAlign = 'center'
           cx.textBaseline = 'middle'
-          cx.fillStyle = '#fff'
-          cx.fillText(`${wall.index} ${wall.distance && wall.distance.toFixed(2)}`, tx * zoom, ty * zoom)
+          cx.fillStyle = '#0ff'
+          cx.fillText(`${wall.index} ${wall.distance && wall.distance.toFixed(2)} ${visibleWalls.has(wall)}`, tx * zoom, ty * zoom)
+          //cx.fillText(`${wall.index} ${wall.leftDot.toFixed(2)} ${wall.rightDot.toFixed(2)}`, tx * zoom, ty * zoom)
         }
       }
 
@@ -937,6 +1053,13 @@ fm.on('ready', async (fm) => {
       cx.fillText(`- Box: ${currentSector.boundingBox.join(', ')}`, 0, textY += 16)
     }
 
+    if (isRenderOnlyVisibleSectors) {
+      cx.fillText(`${visibleSectors.size}`, 0, textY += 16)
+      for (const sector of visibleSectors) {
+        cx.fillText(`${sector.index}`, 0, textY += 16)
+      }
+    }
+
     // TODO: Arreglar la lectura de los otros FME porque sólo
     // funciona con el supercharge.
     cx.putImageData(currentLevel.frames.get('ICHARGE.FME').imageData, 0, 0)
@@ -947,6 +1070,8 @@ fm.on('ready', async (fm) => {
   function frame(time) {
     input(time)
     update(time)
+
+    visibility(time)
 
     if (isRenderEnabled) {
       render(time)

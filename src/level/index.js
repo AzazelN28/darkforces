@@ -278,7 +278,7 @@ export async function load(fm, name) {
   console.log(`Loading ${upperCaseName}.LEV`)
   const basic = await fm.fetch(`${upperCaseName}.LEV`)
   console.log(basic)
-  const sectors = basic.sectors.map((sector) => {
+  const sectors = basic.sectors.map((sector, index) => {
     const indices = triangulate(sector)
     const walls = sector.walls.map((wall, index) => {
       const start = sector.vertices[wall.left]
@@ -298,8 +298,13 @@ export async function load(fm, name) {
         // Otherwise we build the top part of the wall and
         // the bottom part of the wall.
       } else {
-        topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
-        bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
+        if (wall.mirror < 0) {
+          topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
+          bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
+        } else {
+          topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
+          bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
+        }
       }
       return {
         ...wall,
@@ -336,8 +341,12 @@ export async function load(fm, name) {
     const boundingRect = computeSectorBoundingRect(sector)
     const [, , , , width, height] = boundingRect
     const boundingArea = width * height
+    if (sector.flags[0] !== 0 || sector.flags[1] !== 0 || sector.flags[2] !== 0) {
+      console.log(index, sector.name, sector.flags.map((flag) => flag.toString(2).padStart(16,0)))
+    }
     return {
       ...sector,
+      index,
       indices,
       indexBuffer: null,
       floor: {
