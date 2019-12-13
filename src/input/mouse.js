@@ -65,6 +65,13 @@ function handler(e) {
 }
 
 /**
+ * Resets values
+ */
+export function update() {
+  vec2.zero(coords.movement)
+}
+
+/**
  * Returns if a key code exists and if it is pressed
  * @param {string} code
  * @returns {boolean}
@@ -144,6 +151,7 @@ export default {
   isPressed,
   isReleased,
   start,
+  update,
   stop,
   isLocked,
   lock,

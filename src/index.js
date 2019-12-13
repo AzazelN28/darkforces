@@ -1,4 +1,4 @@
-import { vec3, mat4 } from 'gl-matrix'
+import { vec2, vec3, mat4 } from 'gl-matrix'
 
 import level, { getCurrentSector, signedDistanceToWall, isPositionOnWall } from './level'
 
@@ -26,6 +26,7 @@ import defaultFragmentShader from './shaders/default.f.glsl'
 
 import spriteVertexShader from './shaders/sprite.v.glsl'
 import spriteFragmentShader from './shaders/sprite.f.glsl'
+import { approximateToZero } from './utils/range'
 
 const fm = new FileManager()
 fm.on('ready', async (fm) => {
@@ -67,6 +68,7 @@ fm.on('ready', async (fm) => {
   const MIN_LAYER = -9
   const MAX_LAYER = 9
   const MAX_VISIBLE_SECTORS = 128
+  const GRAVITY = 0.06
 
   const ORIGIN = vec3.fromValues(0, 0, 0)
   const UP = vec3.fromValues(0, -1, 0)
@@ -84,19 +86,23 @@ fm.on('ready', async (fm) => {
   const DEBUG_VERTEX_HALF_SIZE = DEBUG_VERTEX_SIZE >> 1
 
   let zoom = DEFAULT_ZOOM
-  let lastTime = 0
   let previousTime = 0
-  let timeAccumulator = 0
 
   // Información del jugador.
   let currentLayer = DEFAULT_LAYER
   let currentSector = null
+
+  let isJumping = false
+
+  const currentSectors = new Set()
   const sectorsToVisit = []
   const visibleSectors = new Set()
   const visibleWalls = new Set()
+
   let shield = 100
   let health = 100
   let battery = 100
+
   const up = vec3.fromValues(0, -1, 0)
   const down = vec3.fromValues(0, 1, 0)
   const forward = vec3.fromValues(0, 0, -1)
@@ -107,13 +113,13 @@ fm.on('ready', async (fm) => {
   const velocity = vec3.create()
   const position = vec3.create()
   const nextPosition = vec3.create()
-  const direction = vec3.create()
+  const viewAngles = vec3.create()
+  const direction = vec2.create()
   const projection = mat4.create()
   const model = mat4.create()
   const view = mat4.create()
   const rotation = mat4.create()
   const projectionView = mat4.create()
-  const projectionViewModel = mat4.create()
 
   /*
   const spriteBuffer = createVertexBuffer(gl, new Float32Array([
@@ -129,15 +135,11 @@ fm.on('ready', async (fm) => {
 
   // Sets the initial position.
   const { x, y, z, pitch, yaw, roll } = currentLevel.objects.find((object) => object.className === 'spirit')
-  for (const object of currentLevel.objects) {
-    if (object.className === 'frame') {
-      console.log(object)
-    }
-  }
 
   log.write(pitch, yaw, roll)
+
   vec3.set(position, -x, y, z)
-  vec3.set(direction, degreesToRadians(pitch), degreesToRadians(yaw + 180), degreesToRadians(roll))
+  vec3.set(viewAngles, degreesToRadians(pitch), degreesToRadians(yaw + 180), degreesToRadians(roll))
 
   const defaultProgram = createProgramFromSource(gl, defaultVertexShader, defaultFragmentShader)
   const spriteProgram = createProgramFromSource(gl, spriteVertexShader, spriteFragmentShader)
@@ -169,7 +171,7 @@ fm.on('ready', async (fm) => {
 
   log.write(currentLevel.frames)
   log.write('Uploading frames')
-  for (const [name, frame] of currentLevel.frames) {
+  for (const [, frame] of currentLevel.frames) {
     frame.texture = createTexture2D(gl, frame.imageData, {
       wrapS: gl.CLAMP_TO_EDGE,
       wrapT: gl.CLAMP_TO_EDGE
@@ -194,37 +196,40 @@ fm.on('ready', async (fm) => {
 
   window.currentLevel = currentLevel
 
+  /**
+   *
+   * @param {number} time
+   */
   function input(time) {
-    // Obtenemos el estado de los mandos.
+    // Updates gamepad state
     gamepad.update(time)
 
     if (mouse.isLocked()) {
-      direction[0] += mouse.coords.movement[1] / gl.canvas.height
-      direction[1] += -mouse.coords.movement[0] / gl.canvas.width
+      viewAngles[0] += mouse.coords.movement[1] / gl.canvas.height
+      viewAngles[1] += -mouse.coords.movement[0] / gl.canvas.width
     } else if (touchpad.isEnabled()) {
-      direction[0] += touchpad.rightStick[1] * 0.125
-      direction[1] += -touchpad.rightStick[0] * 0.125
+      viewAngles[0] += touchpad.rightStick[1] * 0.125
+      viewAngles[1] += -touchpad.rightStick[0] * 0.125
     } else if (gamepad.isEnabled()) {
-      direction[0] += gamepad.rightStick[1] * 0.125
-      direction[1] += -gamepad.rightStick[0] * 0.125
-    }
-
-    // TODO: Esto lo que hace es "limitar" la vista del
-    // jugador en el eje X, es decir, hacia arriba y hacia
-    // abajo. He puesto este límite de momento para probar.
-    // TODO: Hacer que esto no esté activo en modo dios pero
-    // sí en modo de juego.
-    if (direction[0] < -LOOK_UPDOWN_LIMIT) {
-      direction[0] = -LOOK_UPDOWN_LIMIT
-    } else if (direction[0] > LOOK_UPDOWN_LIMIT) {
-      direction[0] = LOOK_UPDOWN_LIMIT
+      viewAngles[0] += gamepad.rightStick[1] * 0.125
+      viewAngles[1] += -gamepad.rightStick[0] * 0.125
     }
 
     if (isGameMode) {
-      vec3.rotateY(forward, FORWARD, ORIGIN, direction[1])
-      vec3.rotateY(backward, BACKWARD, ORIGIN, direction[1])
-      vec3.rotateY(strafeLeft, STRAFE_LEFT, ORIGIN, direction[1])
-      vec3.rotateY(strafeRight, STRAFE_RIGHT, ORIGIN, direction[1])
+      if (viewAngles[0] < -LOOK_UPDOWN_LIMIT) {
+        viewAngles[0] = -LOOK_UPDOWN_LIMIT
+      } else if (viewAngles[0] > LOOK_UPDOWN_LIMIT) {
+        viewAngles[0] = LOOK_UPDOWN_LIMIT
+      }
+    }
+
+    vec2.set(direction, Math.cos(-viewAngles[1] + Math.PI * 0.5), Math.sin(-viewAngles[1] + Math.PI * 0.5))
+
+    if (isGameMode) {
+      vec3.rotateY(forward, FORWARD, ORIGIN, viewAngles[1])
+      vec3.rotateY(backward, BACKWARD, ORIGIN, viewAngles[1])
+      vec3.rotateY(strafeLeft, STRAFE_LEFT, ORIGIN, viewAngles[1])
+      vec3.rotateY(strafeRight, STRAFE_RIGHT, ORIGIN, viewAngles[1])
     } else {
       vec3.transformMat4(forward, FORWARD, rotation)
       vec3.transformMat4(backward, BACKWARD, rotation)
@@ -293,8 +298,20 @@ fm.on('ready', async (fm) => {
     if (keyboard.isPressed('KeyQ')
      || keyboard.isPressed('PageUp')) {
       vec3.add(velocity, velocity, up)
-    } else if (keyboard.isPressed('KeyE') || keyboard.isPressed('PageDown')) {
+    } else if (keyboard.isPressed('KeyE')
+            || keyboard.isPressed('PageDown')) {
       vec3.add(velocity, velocity, down)
+    }
+
+    if (keyboard.isPressed('Space')) {
+      if (!isJumping) {
+        isJumping = true
+        velocity[1] = -1
+      }
+    }
+
+    if (keyboard.isPressed('Digit1')) {
+      isDebugEnabled = !isDebugEnabled
     }
 
     // TODO: Set a max/min zoom level
@@ -321,6 +338,9 @@ fm.on('ready', async (fm) => {
     if (keyboard.isPressed('KeyR')) {
       mouse.lock(gl.canvas)
     }
+
+    mouse.update(time)
+
   }
 
   /**
@@ -330,6 +350,16 @@ fm.on('ready', async (fm) => {
 
     if (isGameMode) {
 
+      /*
+      if (currentSectors.size === 0) {
+        const currentSector = getCurrentSector(position, currentLevel.sectors)
+        if (currentSector === null) {
+          throw new Error('Invalid level')
+        }
+        currentSectors.add(currentSector)
+      }
+      */
+
       if (currentSector === null) {
         currentSector = getCurrentSector(position, currentLevel.sectors)
         if (currentSector === null) {
@@ -338,22 +368,19 @@ fm.on('ready', async (fm) => {
       }
 
       if (currentSector.floor.altitude > position[1] + KYLE_HEIGHT) {
-        velocity[1] += 0.1
-      } else {
+        velocity[1] += GRAVITY
+      }
+
+      if (currentSector.floor.altitude <= position[1] + KYLE_HEIGHT) {
         position[1] = currentSector.floor.altitude - KYLE_HEIGHT
+        isJumping = false
       }
 
       vec3.add(nextPosition, position, velocity)
       vec3.scale(velocity, velocity, 0.9)
-      if (velocity[0] > -0.01 && velocity[0] < 0.01) {
-        velocity[0] = 0
-      }
-      if (velocity[1] > -0.01 && velocity[1] < 0.01) {
-        velocity[1] = 0
-      }
-      if (velocity[2] > -0.01 && velocity[2] < 0.01) {
-        velocity[2] = 0
-      }
+      approximateToZero(velocity[0], 0.01)
+      approximateToZero(velocity[1], 0.01)
+      approximateToZero(velocity[2], 0.01)
 
       // Esto debería ser algo así como "checkSectorCollisions"
       // Por cada pared del sector actual...
@@ -371,35 +398,35 @@ fm.on('ready', async (fm) => {
         // el punto colisiona con la pared.
         const distance = wall.distance = signedDistanceToWall(nextPosition, currentSector, wall)
 
-        const absoluteDistance = Math.abs(distance)
-
         // Si la pared es "caminable" entonces lo que hacemos es
         // tener en cuenta si la distancia es mayor o igual a 0,
         // si es así, significa que hemos atravesado el portal y
         // que nos encontramos al otro lado del portal.
-        if (wall.walk !== -1 && distance > -0.5) {
+        if (wall.walk !== -1) {
 
-          // Obtenemos el nuevo sector.
-          const nextSector = currentLevel.sectors[wall.walk]
+          if (distance > -1) {
+            // Obtenemos el nuevo sector.
+            const nextSector = currentLevel.sectors[wall.walk]
 
-          // Y ajustamos la altura.
-          if (nextSector.floor.altitude < position[1]) {
-            nextPosition[1] = nextSector.floor.altitude + KYLE_HEIGHT
+            // Y ajustamos la altura.
+            if (nextSector.floor.altitude <= position[1] + KYLE_HEIGHT) {
+              nextPosition[1] = nextSector.floor.altitude - KYLE_HEIGHT
+            }
+
+            // Actualizamos el sector.
+            currentSector = nextSector
+            break
           }
-
-          // Actualizamos el sector.
-          currentSector = nextSector
-          break
 
         } else {
 
           // Esta pared no se puede atravesar, así que
           // comprobamos a qué distancia se encuentra
           // y "empujamos" al jugador hacia fuera.
-          if (distance > -0.5 && distance < 0.5) {
+          if (distance > -1 && distance < 1) {
 
-            nextPosition[0] += wall.normal[0] * -distance
-            nextPosition[2] += wall.normal[1] * -distance
+            nextPosition[0] += wall.normal[0] * -distance * 0.5
+            nextPosition[2] += wall.normal[1] * -distance * 0.5
 
           }
         }
@@ -433,6 +460,8 @@ fm.on('ready', async (fm) => {
    * @param {number} time
    */
   function visibility(time) {
+    // Clears all visible sectors and walls.
+    // TODO: We can keep this if we have another step removing non visibles sectors.
     visibleSectors.clear()
     visibleWalls.clear()
     if (currentSector) {
@@ -442,12 +471,6 @@ fm.on('ready', async (fm) => {
     while (sectorsToVisit.length > 0) {
       const sector = sectorsToVisit.shift()
       for (const wall of sector.walls) {
-        // @see https://codepen.io/AzazelN28/pen/GRgZKxR?editors=0010
-        // wall.start = player.direction[0] * (sx - player.position[0]) + player.direction[1] * (sy - player.position[1])
-        // wall.end = player.direction[0] * (ex - player.position[0]) + player.direction[1] * (ey - player.position[1])
-        const dx = Math.cos(-direction[1] + Math.PI * 0.5)
-        const dy = Math.sin(-direction[1] + Math.PI * 0.5)
-
         const left = sector.vertices[wall.left]
         const right = sector.vertices[wall.right]
 
@@ -457,8 +480,8 @@ fm.on('ready', async (fm) => {
         const rex = right[0] - position[0]
         const rey = right[1] - position[2]
 
-        const leftDot = dx * rsx + dy * rsy
-        const rightDot = dx * rex + dy * rey
+        const leftDot = direction[0] * rsx + direction[1] * rsy
+        const rightDot = direction[0] * rex + direction[1] * rey
 
         const isMirror = wall.mirror !== -1
         const isMirrorVisible = isMirror
@@ -469,11 +492,12 @@ fm.on('ready', async (fm) => {
                      || rightDot < 0)
                      && !isMirrorVisible
 
-        if (isVisible) {
-          visibleWalls.add(wall)
+        if (!isVisible) {
+          continue
         }
 
-        if (wall.adjoin !== -1 && isVisible) {
+        visibleWalls.add(wall)
+        if (wall.adjoin !== -1) {
           const sectorToVisit = currentLevel.sectors[wall.adjoin]
           if (!visibleSectors.has(sectorToVisit) && visibleSectors.size < MAX_VISIBLE_SECTORS) {
             visibleSectors.add(sectorToVisit)
@@ -487,10 +511,6 @@ fm.on('ready', async (fm) => {
   let isDirty = false
   let isGameMode = true
   let isRenderEnabled = true
-  let isRenderFloorEnabled = true
-  let isRenderCeilingEnabled = true
-  let isRenderWallsEnabled = true
-  let isRenderObjectsEnabled = true
   let isRenderBoundingRectsEnabled = true
   let isRenderWallIndexEnabled = true
   let isRenderOnlyCurrentLayer = true
@@ -500,8 +520,7 @@ fm.on('ready', async (fm) => {
 
   function renderSector(sector) {
     // If there's floor texture, then we should render floor plane.
-    if (isRenderFloorEnabled
-      && currentLevel.textures[sector.floor.texture.index]) {
+    if (currentLevel.textures[sector.floor.texture.index]) {
       gl.uniform2f(
         gl.getUniformLocation(defaultProgram, 'u_texbase'),
         currentLevel.textures[sector.floor.texture.index].width / TEXTURE_BASE,
@@ -528,8 +547,7 @@ fm.on('ready', async (fm) => {
     }
 
     // If there's ceiling texture then we should rendering this sector.
-    if (isRenderCeilingEnabled
-      && currentLevel.textures[sector.ceiling.texture.index]
+    if (currentLevel.textures[sector.ceiling.texture.index]
       && !(sector.flags[0] & 0x01 === 0x01)) {
       gl.uniform2f(
         gl.getUniformLocation(defaultProgram, 'u_texbase'),
@@ -557,37 +575,26 @@ fm.on('ready', async (fm) => {
     }
 
     // Renderiza las paredes del sector.
-    if (isRenderWallsEnabled) {
-      renderWalls(sector)
-    }
+    renderWalls(sector)
   }
 
   /**
    * Renderiza los sectores
    */
   function renderSectors() {
-    if (isRenderOnlyVisibleSectors) {
-      for (const sector of visibleSectors) {
-        renderSector(sector)
-      }
-    } else {
-      // TODO: Move this to a function called render sectors.
-      for (const sector of currentLevel.sectors) {
-        if (sector.layer !== currentLayer && isRenderOnlyCurrentLayer) {
-          continue
-        }
-        if (sector !== currentSector && isRenderOnlyCurrentSector) {
-          continue
-        }
-        renderSector(sector)
-      }
+    for (const sector of visibleSectors) {
+      renderSector(sector)
     }
   }
 
+  /**
+   * Renders a wall
+   * @param {Wall} wall
+   */
   function renderWall(wall) {
     if (wall.mid.buffer) {
-      if (currentLevel.textures[wall.mid.texture]) {
 
+      if (currentLevel.textures[wall.mid.texture]) {
         gl.uniform2f(
           gl.getUniformLocation(defaultProgram, 'u_texbase'),
           currentLevel.textures[wall.mid.texture].width / TEXTURE_BASE,
@@ -609,7 +616,9 @@ fm.on('ready', async (fm) => {
 
         gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
       }
+
     } else {
+
       if (currentLevel.textures[wall.top.texture]) {
 
         gl.uniform2f(
@@ -657,6 +666,7 @@ fm.on('ready', async (fm) => {
 
         gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
       }
+
     }
   }
 
@@ -676,14 +686,11 @@ fm.on('ready', async (fm) => {
   }
 
   /**
-   * Renders objects
+   * Renders a frame object
+   * @param {LevelObject} object
    */
-  function renderObjects() {
-    if (!isRenderObjectsEnabled) {
-      return
-    }
-
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
+  function renderFrame(object) {
+    const { x, y, z } = object
 
     const spritePosition = vec3.create()
     const spriteProjectionView = mat4.create()
@@ -691,89 +698,118 @@ fm.on('ready', async (fm) => {
 
     gl.useProgram(spriteProgram)
 
+    vec3.set(spritePosition, -x, y, z)
+
+    mat4.identity(spriteModel)
+    mat4.translate(spriteModel, spriteModel, spritePosition)
+    mat4.multiply(spriteModel, spriteModel, rotation)
+    mat4.multiply(spriteProjectionView, projectionView, spriteModel)
+
+    gl.uniformMatrix4fv(gl.getUniformLocation(spriteProgram, 'u_mvp'), false, spriteProjectionView)
+
+    let frame
+    if (object.logics.includes('BATTERY')) {
+      frame = currentLevel.frames.get('IBATTERY.FME')
+    } else if (object.logics.includes('SUPERCHARGE')) {
+      frame = currentLevel.frames.get('ICHARGE.FME')
+    } else if (object.logics.includes('MEDKIT')) {
+      frame = currentLevel.frames.get('IMEDKIT.FME')
+    } else if (object.logics.includes('GOGGLES')) {
+      frame = currentLevel.frames.get('IGOGGLES.FME')
+    } else if (object.logics.includes('RIFLE')) {
+      frame = currentLevel.frames.get('IGOGGLES.FME')
+    } else if (object.logics.includes('ITEM ENERGY')) {
+      frame = currentLevel.frames.get('IGOGGLES.FME')
+    }
+
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, frame.texture)
+    gl.uniform2f(gl.getUniformLocation(spriteProgram, 'u_size'), frame.width, frame.height)
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, spriteBuffer)
+
+    gl.enableVertexAttribArray(gl.getAttribLocation(spriteProgram, 'a_coords'))
+    gl.vertexAttribPointer(gl.getAttribLocation(spriteProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
+
+    gl.enableVertexAttribArray(gl.getAttribLocation(spriteProgram, 'a_texcoords'))
+    gl.vertexAttribPointer(gl.getAttribLocation(spriteProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
+
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
+  }
+
+  /**
+   * Renders a sprite object
+   * @param {LevelObject} object
+   */
+  function renderSprite(object) {
+    const { position: [x, y, z] } = object
+
+    const spritePosition = vec3.create()
+    const spriteProjectionView = mat4.create()
+    const spriteModel = mat4.create()
+
+    gl.useProgram(spriteProgram)
+
+    vec3.set(spritePosition, -x, y, z)
+
+    mat4.identity(spriteModel)
+    mat4.translate(spriteModel, spriteModel, spritePosition)
+    mat4.multiply(spriteModel, spriteModel, rotation)
+    mat4.multiply(spriteProjectionView, projectionView, spriteModel)
+
+    gl.uniformMatrix4fv(gl.getUniformLocation(spriteProgram, 'u_mvp'), false, spriteProjectionView)
+
+    const sprite = currentLevel.sprites[object.data]
+    const angles = sprite.states[0].angles.length
+
+    const dx = Math.cos(-viewAngles[1] + Math.PI * 0.5)
+    const dy = Math.sin(-viewAngles[1] + Math.PI * 0.5)
+
+    const rx = x - position[0]
+    const ry = z - position[2]
+
+    const dot = dx * rx + dy * ry
+
+    const { fme } = sprite.states[0].angles[0].frames[Math.floor(object.currentFrame)]
+    object.currentFrame = (object.currentFrame + (sprite.states[0].frameRate / 60)) % sprite.states[0].angles[0].frames.length
+
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, fme.texture)
+    gl.uniform2f(gl.getUniformLocation(spriteProgram, 'u_size'), fme.width, fme.height)
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, spriteBuffer)
+
+    gl.enableVertexAttribArray(gl.getAttribLocation(spriteProgram, 'a_coords'))
+    gl.vertexAttribPointer(gl.getAttribLocation(spriteProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
+
+    gl.enableVertexAttribArray(gl.getAttribLocation(spriteProgram, 'a_texcoords'))
+    gl.vertexAttribPointer(gl.getAttribLocation(spriteProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
+
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
+  }
+
+  /**
+   * Renders a 3d object
+   * @param {LevelObject} object
+   */
+  function render3DObject(object) {
+
+  }
+
+
+  /**
+   * Renders objects
+   */
+  function renderObjects() {
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
+
     // TODO: We should draw all the sprites in here, we also need to reorder
     // all the objects to do the alpha blending.
     for (const object of currentLevel.objects) {
-
-      if (object.className === 'sprite'
-       || object.className === 'frame') {
-
-        const { x, y, z } = object
-
-        vec3.set(spritePosition, -x, y, z)
-
-        mat4.identity(spriteModel)
-        mat4.translate(spriteModel, spriteModel, spritePosition)
-        mat4.multiply(spriteModel, spriteModel, rotation)
-        mat4.multiply(spriteProjectionView, projectionView, spriteModel)
-
-        gl.uniformMatrix4fv(gl.getUniformLocation(spriteProgram, 'u_mvp'), false, spriteProjectionView)
-
-        // gl.uniform2f(
-        //   gl.getUniformLocation(spriteProgram, 'u_texbase'),
-        //   64.0,
-        //   64.0
-        // )
-
-        gl.activeTexture(gl.TEXTURE0)
-
-        if (object.className === 'frame') {
-          let frame
-          if (object.logics.includes('BATTERY')) {
-            frame = currentLevel.frames.get('IBATTERY.FME')
-          } else if (object.logics.includes('SUPERCHARGE')) {
-            frame = currentLevel.frames.get('ICHARGE.FME')
-          } else if (object.logics.includes('MEDKIT')) {
-            frame = currentLevel.frames.get('IMEDKIT.FME')
-          } else if (object.logics.includes('GOGGLES')) {
-            frame = currentLevel.frames.get('IGOGGLES.FME')
-          } else if (object.logics.includes('RIFLE')) {
-            frame = currentLevel.frames.get('IGOGGLES.FME')
-          } else if (object.logics.includes('ITEM ENERGY')) {
-            frame = currentLevel.frames.get('IGOGGLES.FME')
-          }
-          gl.bindTexture(gl.TEXTURE_2D, frame.texture)
-          gl.uniform2f(gl.getUniformLocation(spriteProgram, 'u_size'), frame.width, frame.height)
-          //gl.bindTexture(gl.TEXTURE_2D, currentLevel.frames[object.data].texture)
-        } else if (object.className === 'sprite') {
-
-          const sprite = currentLevel.sprites[object.data]
-          const angles = sprite.states[0].angles.length
-
-          const dx = Math.cos(-direction[1] + Math.PI * 0.5)
-          const dy = Math.sin(-direction[1] + Math.PI * 0.5)
-
-          const rx = x - position[0]
-          const ry = z - position[2]
-          const r = Math.hypot(rx, ry)
-
-          const dot = dx * rx/r + dy * ry/r
-
-          const angle = Math.round(Math.abs(dot * sprite.states[0].angles.length))
-
-          let frame = sprite.states[0].angles[0].frames[0].fme
-          gl.bindTexture(gl.TEXTURE_2D, frame.texture)
-          gl.uniform2f(gl.getUniformLocation(spriteProgram, 'u_size'), frame.width, frame.height)
-        }
-        // gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.floor.texture.index].texture)
-
-        // gl.uniform1i(gl.getUniformLocation(spriteProgram, 'u_sampler'), 0)
-        // gl.uniform1f(gl.getUniformLocation(spriteProgram, 'u_light'), 1.0)
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, spriteBuffer)
-
-        gl.enableVertexAttribArray(gl.getAttribLocation(spriteProgram, 'a_coords'))
-        gl.vertexAttribPointer(gl.getAttribLocation(spriteProgram, 'a_coords'), 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
-
-        gl.enableVertexAttribArray(gl.getAttribLocation(spriteProgram, 'a_texcoords'))
-        gl.vertexAttribPointer(gl.getAttribLocation(spriteProgram, 'a_texcoords'), 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
-
-        gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
-
-      } else if (object.className === '3d') {
-
-        // TODO: We should draw the 3D models in here.
-
+      switch (object.className) {
+      case 'frame': renderFrame(object); break
+      case 'sprite': renderSprite(object); break
+      case '3d': render3DObject(object); break
       }
     }
   }
@@ -794,25 +830,23 @@ fm.on('ready', async (fm) => {
 
     if (isDirty) {
       mat4.perspective(projection, Math.PI * 0.25, gl.canvas.width / gl.canvas.height, 0.1, 1000.0)
-
       gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
-
       isDirty = false
     }
 
-    // Establece la matriz de rotación de la vista
-    // a partir de la dirección vertical y horizontal.
+    // Sets the rotation matrix
     mat4.identity(rotation)
-    mat4.rotateY(rotation, rotation, direction[1])
-    mat4.rotateX(rotation, rotation, direction[0])
+    mat4.rotateY(rotation, rotation, viewAngles[1])
+    mat4.rotateX(rotation, rotation, viewAngles[0])
 
-    //
+    // Sets the model matrix.
     mat4.identity(model)
     mat4.translate(model, model, position)
     mat4.multiply(model, model, rotation)
     mat4.invert(view, model)
     mat4.multiply(projectionView, projection, view)
 
+    // clear colors.
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
@@ -822,11 +856,8 @@ fm.on('ready', async (fm) => {
     */
 
     gl.enable(gl.DEPTH_TEST)
-
     gl.useProgram(defaultProgram)
-
     gl.uniform4f(gl.getUniformLocation(defaultProgram, 'u_fogColor'), ...fogColor)
-
     gl.uniformMatrix4fv(gl.getUniformLocation(defaultProgram, 'u_mvp'), false, projectionView)
 
     /**
@@ -884,6 +915,10 @@ fm.on('ready', async (fm) => {
 
     cx.clearRect(0, 0, cx.canvas.width, cx.canvas.height)
 
+    if (!isDebugEnabled) {
+      return
+    }
+
     log.render(cx)
 
     const scx = cx.canvas.width >> 1
@@ -891,7 +926,7 @@ fm.on('ready', async (fm) => {
 
     cx.save()
     cx.translate(scx, scy)
-    cx.rotate(-direction[1] + Math.PI * 0.5)
+    cx.rotate(-viewAngles[1] + Math.PI * 0.5)
     cx.beginPath()
     cx.moveTo(8, 0)
     cx.lineTo(-8, 0)
@@ -1058,56 +1093,48 @@ fm.on('ready', async (fm) => {
 
     let textY = 0
     cx.fillText(`${frameID} ${time}`, 0, textY += 16)
-
-    // TODO: Esto debería mandarlo a otra parte
-    // de la interfaz.
-    cx.fillText('KEYS', 0, textY += 16)
-    cx.fillText('[] - Zoom', 0, textY += 16)
-    cx.fillText(`W,A,S,D - Move ${gamepad.leftStick.join(',')}, ${gamepad.rightStick.join(',')}`, 0, textY += 16)
-    cx.fillText('Q,E - Up/Down', 0, textY += 16)
-    cx.fillText('Z,X - Up/Down layers', 0, textY += 16)
-
+    cx.fillText(`${viewAngles.join(', ')}`, 0, textY += 16)
     cx.fillText(`${position.join(', ')}`, 0, textY += 16)
-    if (currentSector !== null) {
-      cx.fillText(`Sector ${currentSector.index} ${currentSector.name} ${currentSector.layer}`, 0, textY += 16)
-      cx.fillText(`- Flags: ${currentSector.flags.join(', ')}`, 0, textY += 16)
-      cx.fillText(`- Light: ${currentSector.light}`, 0, textY += 16)
-      cx.fillText(`- Floor: ${currentSector.floor.altitude} ${currentSector.floor.texture.index} ${currentSector.floor.texture.x} ${currentSector.floor.texture.y} ${currentSector.floor.texture.flags.toString(2)}`, 0, textY += 16)
-      cx.fillText(`- Ceiling: ${currentSector.ceiling.altitude} ${currentSector.ceiling.texture.index} ${currentSector.ceiling.texture.x} ${currentSector.ceiling.texture.y} ${currentSector.ceiling.texture.flags.toString(2)}`, 0, textY += 16)
-      cx.fillText(`- Rect: ${currentSector.boundingRect.join(', ')}`, 0, textY += 16)
-      cx.fillText(`- Box: ${currentSector.boundingBox.join(', ')}`, 0, textY += 16)
-    }
-
-    if (isRenderOnlyVisibleSectors) {
-      cx.fillText(`${visibleSectors.size}`, 0, textY += 16)
-      for (const sector of visibleSectors) {
-        cx.fillText(`${sector.index}`, 0, textY += 16)
+    if (currentSectors.size > 0) {
+      for (const currentSector of currentSectors) {
+        cx.fillText(`Sector ${currentSector.index} ${currentSector.name} ${currentSector.layer}`, 0, textY += 16)
+        cx.fillText(`- Flags: ${currentSector.flags.join(', ')}`, 0, textY += 16)
+        cx.fillText(`- Light: ${currentSector.light}`, 0, textY += 16)
+        cx.fillText(`- Floor: ${currentSector.floor.altitude} ${currentSector.floor.texture.index} ${currentSector.floor.texture.x} ${currentSector.floor.texture.y} ${currentSector.floor.texture.flags.toString(2)}`, 0, textY += 16)
+        cx.fillText(`- Ceiling: ${currentSector.ceiling.altitude} ${currentSector.ceiling.texture.index} ${currentSector.ceiling.texture.x} ${currentSector.ceiling.texture.y} ${currentSector.ceiling.texture.flags.toString(2)}`, 0, textY += 16)
+        cx.fillText(`- Rect: ${currentSector.boundingRect.join(', ')}`, 0, textY += 16)
+        cx.fillText(`- Box: ${currentSector.boundingBox.join(', ')}`, 0, textY += 16)
       }
     }
 
-    // TODO: Arreglar la lectura de los otros FME porque sólo
-    // funciona con el supercharge.
+    // FIX: There are some FMEs that aren't rendered.
     // cx.putImageData(currentLevel.frames.get('ICHARGE.FME').imageData, 0, 0)
-    cx.putImageData(currentLevel.sprites[0].states[0].angles[0].frames[0].fme.imageData, 0, 0)
+    // cx.putImageData(currentLevel.sprites[0].states[0].angles[0].frames[0].fme.imageData, 0, 0)
   }
 
+  // Frame identifier.
   let frameID
 
+  /**
+   * Every frame this is called
+   * @param {number} time
+   */
   function frame(time) {
     input(time)
     update(time)
-
     visibility(time)
-
-    if (isRenderEnabled) {
-      render(time)
-    }
-
-    if (isDebugEnabled) {
-      renderDebug(time)
-    }
-
+    render(time)
+    renderDebug(time)
     frameID = window.requestAnimationFrame(frame)
+  }
+
+  function stop() {
+    mouse.stop()
+    touchpad.stop()
+    keyboard.stop()
+    gamepad.stop()
+    window.cancelAnimationFrame(frameID)
+    frameID = undefined
   }
 
   function start() {
