@@ -94,6 +94,26 @@ fm.on('ready', async (fm) => {
 
   let isJumping = false
 
+  const mediaRecorder = new MediaRecorder(engine.captureStream(30))
+  let isRecording = false
+  let mediaChunks = []
+  mediaRecorder.ondataavailable = (e) => {
+    mediaChunks.push(e.data)
+  }
+  mediaRecorder.onstart = () => {
+    isRecording = true
+  }
+  mediaRecorder.onstop = () => {
+    isRecording = false
+    const blob = new Blob(mediaChunks, { type: mediaRecorder.mimeType })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'df.mp4'
+    a.dispatchEvent(new MouseEvent('click'))
+  }
+
+
   const currentSectors = new Set()
   const sectorsToVisit = []
   const visibleSectors = new Set()
@@ -307,31 +327,6 @@ fm.on('ready', async (fm) => {
       if (!isJumping) {
         isJumping = true
         velocity[1] = -1
-      }
-    }
-
-    if (keyboard.isPressed('Digit1')) {
-      isDebugEnabled = !isDebugEnabled
-    }
-
-    // TODO: Set a max/min zoom level
-    if (keyboard.isPressed('BracketLeft')) {
-      if (zoom > MIN_ZOOM) {
-        zoom--
-      }
-    } else if (keyboard.isPressed('BracketRight')) {
-      if (zoom < MAX_ZOOM) {
-        zoom++
-      }
-    }
-
-    if (keyboard.isPressed('KeyZ')) {
-      if (currentLayer > MIN_LAYER) {
-        currentLayer--
-      }
-    } else if (keyboard.isPressed('KeyX')) {
-      if (currentLayer < MAX_LAYER) {
-        currentLayer++
       }
     }
 
@@ -1141,6 +1136,27 @@ fm.on('ready', async (fm) => {
     mouse.start()
     touchpad.start()
     keyboard.start()
+    keyboard.on('Digit1', () => isDebugEnabled = !isDebugEnabled)
+    keyboard.on('BracketLeft', () => {
+      if (zoom > MIN_ZOOM) zoom--
+    })
+    keyboard.on('BracketRight', () => {
+      if (zoom < MAX_ZOOM) zoom++
+    })
+    keyboard.on('KeyZ', () => {
+      if (currentLayer > MIN_LAYER) currentLayer--
+    })
+    keyboard.on('KeyX', () => {
+      if (currentLayer < MAX_LAYER) currentLayer++
+    })
+    keyboard.on('KeyY', () => {
+      if (isRecording) {
+        mediaRecorder.stop()
+      } else {
+        mediaRecorder.start()
+      }
+    })
+
     gamepad.start()
 
     const fullScreenButton = document.querySelector('#full-screen-button')

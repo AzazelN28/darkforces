@@ -15,4 +15,5 @@ void main() {
     u_fogColor / 256.0,
     v_depth
   ) * u_light;
+  gl_FragColor.a = 1.0;
 }
