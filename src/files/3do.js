@@ -147,8 +147,8 @@ export function parse(dataView, start, size) {
       return 'object-entry-texture-polygon-entry'
     },
     'object-entry-texture-polygon-entry': (line) => {
-      const [,a,b,c,d] = parseLine(' {n}: {n} {n} {n} {n}', line)
-      object.texture.quads.push([a,b,c,d])
+      const [, a, b, c, d] = parseLine(' {n}: {n} {n} {n} {n}', line)
+      object.texture.quads.push([a, b, c, d])
       if (object.texture.quads.length < object.texture.numQuads) {
         return 'object-entry-texture-polygon-entry'
       }
