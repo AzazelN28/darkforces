@@ -13,16 +13,11 @@ export function parse(dataView, start, size) {
 
   function createEmptySector() {
     return {
-      id: null,
       name: null,
       light: null,
       floor: null,
       ceiling: null,
-      floorTexture: null,
-      floorAltitude: null,
-      ceilingTexture: null,
-      ceilingAltitude: null,
-      secondAltitude: null,
+      second: null,
       vertexCount: null,
       vertices: [],
       wallCount: null,
@@ -142,12 +137,15 @@ export function parse(dataView, start, size) {
     },
     'sector-second-altitude': (line) => {
       const [altitude] = parseLine(' SECOND ALTITUDE {d}', line)
-      sector.secondAltitude = altitude
+      sector.second = { altitude }
       return 'sector-flags'
     },
     'sector-flags': (line) => {
       const [x, y, z] = parseLine(' FLAGS {n} {n} {n}', line)
       sector.flags = [x, y, z]
+      if (x !== 0 ||  y !== 0 || z !== 0) {
+        console.log(sector)
+      }
       return 'sector-layer'
     },
     'sector-layer': (line) => {
@@ -175,7 +173,7 @@ export function parse(dataView, start, size) {
     },
     'sector-wall': (line) => {
       const [left,right,midt,midx,midy,midr,topt,topx,topy,topr,bottomt,bottomx,bottomy,bottomr,sign,signx,signy,adjoin,mirror,walk,u,v,w,light] = parseLine(' WALL LEFT: {i} RIGHT: {i} MID: {i} {d} {d} {i} TOP: {i} {d} {d} {i} BOT: {i} {d} {d} {i} SIGN: {d} {d} {d} ADJOIN: {i} MIRROR: {i} WALK: {i} FLAGS: {n} {n} {n} LIGHT: {n}', line)
-      sector.walls.push({
+      const wall = {
         left,
         right,
         mid: {
@@ -201,9 +199,13 @@ export function parse(dataView, start, size) {
         adjoin,
         mirror,
         walk,
-        u,v,w,
+        flags: [u, v, w],
         light
-      })
+      }
+      if (u !== 0 || v !== 0 || w !== 0) {
+        console.log(wall, sector)
+      }
+      sector.walls.push(wall)
       if (sector.wallCount === sector.walls.length) {
         sectors.push(sector)
         sector = createEmptySector()

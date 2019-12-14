@@ -16,7 +16,7 @@ const keys = new Map()
  */
 function handler(e) {
   keys.set(e.code, e.type === 'keydown')
-  if (callbacks.has(e.code)) {
+  if (callbacks.has(e.code) && e.type === 'keyup') {
     const callback = callbacks.get(e.code)
     callback(e)
   }

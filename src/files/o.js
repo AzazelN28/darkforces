@@ -114,17 +114,22 @@ export function parse(dataView, start, size) {
     },
     'object': (line) => { // eslint-disable-line
       if (isLine('CLASS: {*} DATA: {i} X: {d} Y: {d} Z: {d} PCH: {d} YAW: {d} ROL: {d} DIFF: {i}', line) && !isObjectSequence) {
-        const [className, data, x, y, z, pitch, yaw, roll, diff] = parseLine('CLASS: {*} DATA: {i} X: {d} Y: {d} Z: {d} PCH: {d} YAW: {d} ROL: {d} DIFF: {i}', line)
+        const [className, data, x, y, z, pitch, yaw, roll, difficulty] = parseLine('CLASS: {*} DATA: {i} X: {d} Y: {d} Z: {d} PCH: {d} YAW: {d} ROL: {d} DIFF: {i}', line)
+        // TODO: If className is 'sprite' we should add more data
+        // like current frame.
         object = {
           className: className.toLowerCase().trim(),
           data,
+          position: [x, y, z],
+          rotation: [pitch, yaw, roll],
           x,
           y,
           z,
           pitch,
           yaw,
           roll,
-          diff,
+          difficulty,
+          currentFrame: 0,
           typeName: null,
           vue: null,
           radius: 0,

@@ -1,4 +1,5 @@
 import earcut from 'earcut'
+import { vec2 } from 'gl-matrix'
 import { buildMidWall, buildAdjoinedBottomWall, buildAdjoinedTopWall, buildCeiling, buildFloor } from './build'
 import { from, isBetween } from '../utils/range'
 
@@ -8,7 +9,8 @@ import { from, isBetween } from '../utils/range'
  * @returns {Array<number>}
  */
 function triangulate(sector) {
-  return earcut(sector.vertices.flat())
+  return sector.vertices.map((index) => index).reverse()
+  // return earcut(sector.vertices.flat())
   /*
   const vertices = []
   const holes = []
@@ -38,28 +40,52 @@ function triangulate(sector) {
 }
 
 /**
- * Computes the bounding box of a sector
+ * Computes the bounding rect of a sector.
+ * @param {Sector} sector
+ * @returns {BoundingRect}
+ */
+function computeSectorBoundingRect(sector) {
+  let maxX, minX, maxZ, minZ
+  for (const wall of sector.walls) {
+    const [sx, sz] = sector.vertices[wall.left]
+    const [ex, ez] = sector.vertices[wall.right]
+    maxX = (maxX === undefined)
+      ? Math.max(sx, ex)
+      : Math.max(maxX, sx, ex)
+    minX = (minX === undefined)
+      ? Math.min(sx, ex)
+      : Math.min(minX, sx, ex)
+    maxZ = (maxZ === undefined)
+      ? Math.max(sz, ez)
+      : Math.max(maxZ, sz, ez)
+    minZ = (minZ === undefined)
+      ? Math.min(sz, ez)
+      : Math.min(minZ, sz, ez)
+  }
+  return [
+    minX, maxX,
+    minZ, maxZ,
+    maxX - minX, // ancho
+    maxZ - minZ // alto
+  ]
+}
+
+/**
+ * Computes the bounding box of a sector.
  * @param {Sector} sector
  * @returns {BoundingBox}
  */
 function computeSectorBoundingBox(sector) {
-  let maxX = Number.MIN_VALUE
-  let minX = Number.MAX_VALUE
-  let maxZ = Number.MIN_VALUE
-  let minZ = Number.MAX_VALUE
   const minY = sector.ceiling.altitude
   const maxY = sector.floor.altitude
-  for (const wall of sector.walls) {
-    const [x, y] = sector.vertices[wall.left]
-    maxX = Math.max(maxX, x)
-    minX = Math.min(minX, x)
-    maxZ = Math.max(maxZ, y)
-    minZ = Math.min(minZ, y)
-  }
+  const [minX, maxX, minZ, maxZ] = computeSectorBoundingRect(sector)
   return [
     minX, maxX,
     minY, maxY,
-    minZ, maxZ
+    minZ, maxZ,
+    maxX - minX, // ancho
+    maxY - minY, // alto
+    maxZ - minZ  // largo
   ]
 }
 
@@ -79,7 +105,7 @@ function getFogColor(palette, colorMaps) {
 
 /**
  * Returns the real light value.
- * @param {number} light - Sector/Wall light
+ * @param {number} light Sector/Wall light
  * @returns {number} A value between 0.5 and 1.0 that represents how much light the sector or wall has
  */
 function getLight(light) {
@@ -90,23 +116,155 @@ function getLight(light) {
 }
 
 /**
+ * Returns if the specified point is contained in the
+ * BoundingRect
+ * @param {vec3} position
+ * @param {BoundingRect} boundingRect
+ * @returns {boolean}
+ */
+export function isInBoundingRect([x, , z], boundingRect) {
+  const [minX, maxX, minZ, maxZ] = boundingRect
+  return isBetween(x, minX, maxX)
+      && isBetween(z, minZ, maxZ)
+}
+
+/**
+ * Returns if the specified point is containd in the
+ * BoundingBox.
+ * @param {vec3} position
+ * @param {BoundingBox} boundingBox
+ * @returns {boolean}
+ */
+export function isInBoundingBox([x, y, z], boundingBox) {
+  const [minX, maxX, minY, maxY, minZ, maxZ] = boundingBox
+  return isBetween(x, minX, maxX)
+      && isBetween(y, minY, maxY)
+      && isBetween(z, minZ, maxZ)
+}
+
+/**
+ * Returns the side of the wall where the point lies
+ * @param {vec3} position
+ * @param {Sector} sector
+ * @param {Wall} wall
+ * @returns {number}
+ */
+export function sideOfWall([x, , z], sector, wall) {
+  const [sx, sz] = sector.vertices[wall.left]
+  const [ex, ez] = sector.vertices[wall.right]
+  const dx = ex - sx
+  const dz = ez - sz
+  return Math.sign(dx * (z - sz) - dz * (x - sx))
+}
+
+/**
+ * Returns the absolute distance to wall
+ * @param {vec3} position
+ * @param {Sector} sector
+ * @param {Wall} wall
+ * @returns {number}
+ */
+export function distanceToWall([x, , z], sector, wall) {
+  const [sx, sz] = sector.vertices[wall.left]
+  const [ex, ez] = sector.vertices[wall.right]
+  const dx = ex - sx
+  const dz = ez - sz
+  return Math.abs(dz * x - dx * z + ex * sz - ez * sx) / Math.sqrt(dz * dz + dx * dx)
+}
+
+/**
+ * Returns the signed distance to wall
+ * @param {vec3} position
+ * @param {Sector} sector
+ * @param {Wall} wall
+ * @returns {number}
+ */
+export function signedDistanceToWall([x, , z], sector, wall) {
+  const [sx, sz] = sector.vertices[wall.left]
+  const [ex, ez] = sector.vertices[wall.right]
+  const dx = ex - sx
+  const dz = ez - sz
+  return (dz * x - dx * z + ex * sz - ez * sx) / Math.sqrt(dz * dz + dx * dx)
+}
+
+/**
+ * Returns if the position lies on the wall
+ * @param {vec3} position
+ * @param {Sector} sector
+ * @param {Wall} wall
+ * @returns {boolean}
+ */
+export function isPositionOnWall([x, , z], sector, wall) {
+  const [sx, sz] = sector.vertices[wall.left]
+  const [ex, ez] = sector.vertices[wall.right]
+  const dx = ex - sx
+  const dz = ez - sz
+  const px = x - sx
+  const pz = z - sz
+  const max = dx * dx + dz * dz
+  const value = dx * px + dz * pz
+  return value > 0 && value < max
+}
+
+/**
+ * Returns if point is projected on line segment
+ * @param {vec2} position
+ * @param {vec2} start
+ * @param {vec2} end
+ * @returns {boolean}
+ */
+export function isProjectedPointOnSegment([x, y], [sx, sy], [ex, ey]) {
+  const [t1x, t1y] = [ex - sx, ey - sy]
+  const [t2x, t2y] = [x - sx, y - sy]
+  const max = t1x * t1x + t1y * t1y
+  const value = t1x * t2x + t1y * t2y
+  return (value > 0 && value < max)
+}
+
+/**
+ * Returns candidates to be the current sector.
+ * @param {vec3} position Entity position.
+ * @param {Array<Sector>} sectors Level sectors.
+ * @returns {Array<Sector>} Sectors that could contain the player.
+ */
+export function getCurrentSectors(position, sectors) {
+  const candidates = []
+  for (const sector of sectors) {
+    if (isInBoundingBox(position, sector.boundingBox)) {
+      candidates.push(sector)
+    }
+  }
+  return candidates
+}
+
+/**
  * Returns the current sector
  * @param {vec3} position
  * @param {Array<Sector>} sectors
  * @returns {Sector|null}
  */
-export function getCurrentSector([x, y, z], sectors) {
-  // TODO: This should give better results by using walls instead
-  // of just using bounding boxes.
+export function getFirstSector(position, sectors) {
   for (const sector of sectors) {
-    const [minX, maxX, minY, maxY, minZ, maxZ] = sector.boundingBox
-    if (isBetween(x, minX, maxX)
-     && isBetween(y, minY, maxY)
-     && isBetween(z, minZ, maxZ)) {
+    if (isInBoundingBox(position, sector.boundingBox)) {
       return sector
     }
   }
   return null
+}
+
+/**
+ * Returns the current sector
+ * @param {vec3} position
+ * @param {Array<Sector>} sectors
+ * @returns {Sector|null}
+ */
+export function getCurrentSector(position, sectors) {
+  const candidates = getCurrentSectors(position, sectors)
+  if (candidates.length === 0) {
+    return null
+  }
+  candidates.sort((a, b) => b.boundingArea - a.boundingArea)
+  return candidates.pop()
 }
 
 /**
@@ -120,22 +278,41 @@ export async function load(fm, name) {
   console.log(`Loading ${upperCaseName}.LEV`)
   const basic = await fm.fetch(`${upperCaseName}.LEV`)
   console.log(basic)
-  const sectors = basic.sectors.map((sector) => {
+  const sectors = basic.sectors.map((sector, index) => {
     const indices = triangulate(sector)
-    const walls = sector.walls.map((wall) => {
+    const walls = sector.walls.map((wall, index) => {
+      const start = sector.vertices[wall.left]
+      const end = sector.vertices[wall.right]
+      const dx = end[0] - start[0]
+      const dy = end[1] - start[1]
+      const size = vec2.fromValues(dx, dy)
+      const tangent = vec2.fromValues(dx, dy)
+      vec2.normalize(tangent, tangent)
+      const normal = vec2.fromValues(-dy, dx)
+      vec2.normalize(normal, normal)
       // If the wall it's not connected to another sector
       // then we should build a complete wall.
       let midGeometry, topGeometry, bottomGeometry
       if (wall.adjoin < 0) {
         midGeometry = buildMidWall(sector, wall)
-      // Otherwise we build the top part of the wall and
-      // the bottom part of the wall.
+        // Otherwise we build the top part of the wall and
+        // the bottom part of the wall.
       } else {
-        topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
-        bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
+        if (wall.mirror < 0) {
+          topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
+          bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
+        } else {
+          topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
+          bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
+        }
       }
       return {
         ...wall,
+        index,
+        distance: null,
+        size,
+        tangent,
+        normal,
         mid: {
           ...wall.mid,
           geometry: midGeometry,
@@ -160,8 +337,16 @@ export async function load(fm, name) {
         bottomBuffer: null
       }
     })
+    const boundingBox = computeSectorBoundingBox(sector)
+    const boundingRect = computeSectorBoundingRect(sector)
+    const [, , , , width, height] = boundingRect
+    const boundingArea = width * height
+    if (sector.flags[0] !== 0 || sector.flags[1] !== 0 || sector.flags[2] !== 0) {
+      console.log(index, sector.name, sector.flags.map((flag) => flag.toString(2).padStart(16,0)))
+    }
     return {
       ...sector,
+      index,
       indices,
       indexBuffer: null,
       floor: {
@@ -176,7 +361,9 @@ export async function load(fm, name) {
       },
       light: getLight(sector.light),
       walls,
-      boundingBox: computeSectorBoundingBox(sector),
+      boundingBox,
+      boundingRect,
+      boundingArea,
       wallColor: new Float32Array([Math.random(), Math.random(), Math.random()]),
       planeColor: new Float32Array([Math.random(), Math.random(), Math.random()]),
     }
@@ -243,10 +430,12 @@ export async function load(fm, name) {
   }))
   console.log(meshes)
   console.log(`Loading frames ${objects.frameCount}`)
-  const frames = await Promise.all(objects.frames.map((current) => {
+  const frames = new Map(await Promise.all(objects.frames.map((current) => {
     console.log(`Loading frame ${current}`)
     return fm.fetch(current)
-  }))
+      .then((frame) => [current, frame])
+  })))
+  console.log(frames)
   console.log(`Loading sprites ${objects.spriteCount}`)
   const sprites = await Promise.all(objects.sprites.map((current) => {
     console.log(`Loading sprite ${current}`)

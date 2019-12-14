@@ -2,7 +2,7 @@ import touch from '../touch'
 import { getElement } from '../../utils/dom'
 import events from '../../utils/events'
 
-const isTouchSupported = touch.isAvailable()
+const isTouchSupported = touch.isEnabled()
 
 export default class TouchButton {
   constructor(element) {

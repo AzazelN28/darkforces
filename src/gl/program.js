@@ -33,7 +33,21 @@ export function createProgramFromSource(gl, vertexShaderSource, fragmentShaderSo
   )
 }
 
+export function deleteProgram(gl, program, deleteShaders) {
+  if (deleteShaders) {
+    const shaders = gl.getProgramParameter(program, gl.ATTACHED_SHADERS)
+    for (const shader of shaders) {
+      gl.deleteShader(shader)
+    }
+  }
+  gl.deleteProgram(program)
+  if (!gl.getProgramParameter(program, gl.DELETE_STATUS)) {
+    throw new Error(gl.getProgramInfoLog(program))
+  }
+}
+
 export default {
   createProgram,
-  createProgramFromSource
+  createProgramFromSource,
+  deleteProgram
 }

@@ -41,9 +41,24 @@ export function isBetween(value, min, max) {
   return value > min && value < max
 }
 
+/**
+ * Returns zero if value is close enough
+ * @param {number} value
+ * @param {number} limit
+ */
+export function approximateToZero(value, limit = 0.01) {
+  if (value > -limit) {
+    return 0
+  } else if (value < limit) {
+    return 0
+  }
+  return value
+}
+
 export default {
   clamp,
   from,
   to,
-  isBetween
+  isBetween,
+  approximateToZero
 }
