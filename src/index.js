@@ -494,7 +494,9 @@ fm.on('ready', async (fm) => {
       if (currentSector === null) {
         currentSector = getCurrentSector(position, currentLevel.sectors)
         if (currentSector === null) {
-          throw new Error('Invalid level')
+          isGameMode = false
+          return
+          //throw new Error('Invalid level')
         }
       }
 
@@ -616,7 +618,7 @@ fm.on('ready', async (fm) => {
 
         const isMirror = wall.mirror !== -1
         const isMirrorVisible = isMirror
-          ? visibleWalls.has(currentLevel.sectors[wall.adjoin].walls[wall.mirror])
+          ? true // visibleWalls.has(currentLevel.sectors[wall.adjoin].walls[wall.mirror])
           : false
 
         const isVisible = (leftDot < 0
@@ -641,12 +643,10 @@ fm.on('ready', async (fm) => {
 
   let isDirty = false
   let isGameMode = true
-  let isRenderEnabled = true
   let isRenderBoundingRectsEnabled = true
   let isRenderWallIndexEnabled = true
   let isRenderOnlyCurrentLayer = true
   let isRenderOnlyCurrentSector = true
-  let isRenderOnlyVisibleSectors = true
   let isDebugEnabled = true
 
   function renderSector(sector) {
@@ -954,9 +954,28 @@ fm.on('ready', async (fm) => {
     } else if (object.logics.includes('GOGGLES')) {
       frame = currentLevel.frames.get('IGOGGLES.FME')
     } else if (object.logics.includes('RIFLE')) {
-      frame = currentLevel.frames.get('IGOGGLES.FME')
-    } else if (object.logics.includes('ITEM ENERGY')) {
-      frame = currentLevel.frames.get('IGOGGLES.FME')
+      frame = currentLevel.frames.get('IRIFLE.FME')
+    } else if (object.logics.includes('ITEM ENERGY') || object.logics.includes('ENERGY') || object.typeName === 'ENERGY') {
+      frame = currentLevel.frames.get('IENERGY.FME')
+    } else if (object.logics.includes('DETONATOR')) {
+      frame = currentLevel.frames.get('IDET.FME')
+    } else if (object.logics.includes('DETONATORS')) {
+      frame = currentLevel.frames.get('IDETS.FME')
+    } else if (object.logics.includes('POWER')) {
+      frame = currentLevel.frames.get('IPOWER.FME')
+    } else if (object.logics.includes('FUSION')) {
+      frame = currentLevel.frames.get('IFUSION.FME')
+    } else if (object.logics.includes('AUTOGUN')) {
+      frame = currentLevel.frames.get('IAUTOGUN.FME')
+    } else if (object.typeName === 'BLUE') {
+      frame = currentLevel.frames.get('IKEYB.FME')
+    }
+
+    if (!frame) {
+      if (object.typeName || object.logics.length > 0) {
+        console.log(object.typeName, object.logics)
+      }
+      return
     }
 
     gl.enable(gl.BLEND)
