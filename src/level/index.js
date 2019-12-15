@@ -386,9 +386,10 @@ export async function load(fm, name) {
     styles.push(style)
   }
   styles.unshift(message)
-  console.log(...styles)
-  console.log(`Loading color maps ${upperCaseName}.CMP`)
+  /*console.log(...styles)
+  console.log(`Loading color maps ${upperCaseName}.CMP`)*/
   const colorMaps = await fm.fetch(`${upperCaseName}.CMP`)
+  /*
   console.log(colorMaps)
   for (const colorMap of colorMaps) {
     message = ''
@@ -406,6 +407,7 @@ export async function load(fm, name) {
     console.log(...styles)
   }
   console.log(`Color maps loaded`)
+  */
   /*
   console.log(`Loading music ${basic.music}`)
   if (!fm.fetch(basic.music)) {
@@ -417,7 +419,7 @@ export async function load(fm, name) {
   console.log(`Loading textures ${basic.textureCount}`)
   const textures = await Promise.all(basic.textures.map((current, index, list) => {
     console.log(`Loading texture ${current} (${index + 1}/${list.length})`)
-    return fm.fetch(current)
+    return fm.fetch(current).catch((error) => null)
   }))
   console.log(textures)
   console.log(`Loading ${upperCaseName}.O`)

@@ -57,6 +57,7 @@ fm.on('ready', async (fm) => {
     ? url.searchParams.get('level')
     : 'SECBASE'
 
+  log.write(await fm.fetch('JEDI.LVL'))
   log.write(levelName)
   const currentLevel = await level.load(fm, levelName)
   log.write(currentLevel)
@@ -319,7 +320,6 @@ fm.on('ready', async (fm) => {
   log.write('Uploading textures...')
   for (const texture of currentLevel.textures) {
     if (texture && texture.imageData) {
-      log.write(texture.width, texture.height)
       texture.texture = createTexture2D(gl, texture.imageData)
     }
   }
@@ -337,6 +337,10 @@ fm.on('ready', async (fm) => {
 
   log.write('Uploading sprites')
   for (const sprite of currentLevel.sprites) {
+    if (!sprite) {
+      log.write('Skipping invalid sprite')
+      continue
+    }
     for (const state of sprite.states) {
       for (const angle of state.angles) {
         for (const frame of angle.frames) {
@@ -642,7 +646,7 @@ fm.on('ready', async (fm) => {
   }
 
   let isDirty = false
-  let isGameMode = true
+  let isGameMode = location.searchParams && location.searchParams.mode === 'game' || true
   let isRenderBoundingRectsEnabled = true
   let isRenderWallIndexEnabled = true
   let isRenderOnlyCurrentLayer = true
@@ -819,8 +823,14 @@ fm.on('ready', async (fm) => {
     gl.uniform4f(defaultProgramUniforms.u_fogColor, ...fogColor)
     gl.uniformMatrix4fv(defaultProgramUniforms.u_mvp, false, projectionView)
 
-    for (const sector of visibleSectors) {
-      renderSector(sector)
+    if (isGameMode) {
+      for (const sector of visibleSectors) {
+        renderSector(sector)
+      }
+    } else {
+      for (const sector of currentLevel.sectors) {
+        renderSector(sector)
+      }
     }
   }
 
@@ -913,10 +923,11 @@ fm.on('ready', async (fm) => {
    */
   function renderWalls(sector) {
     for (const wall of sector.walls) {
-      // TODO: Change this to something like wall.isVisible
-      // and make a better calculation for what sector is
-      // actually rendered (not only checking dot product).
-      if (visibleWalls.has(wall)) {
+      if (isGameMode) {
+        if (visibleWalls.has(wall)) {
+          renderWall(wall)
+        }
+      } else {
         renderWall(wall)
       }
     }
@@ -953,9 +964,9 @@ fm.on('ready', async (fm) => {
       frame = currentLevel.frames.get('IMEDKIT.FME')
     } else if (object.logics.includes('GOGGLES')) {
       frame = currentLevel.frames.get('IGOGGLES.FME')
-    } else if (object.logics.includes('RIFLE')) {
-      frame = currentLevel.frames.get('IRIFLE.FME')
-    } else if (object.logics.includes('ITEM ENERGY') || object.logics.includes('ENERGY') || object.typeName === 'ENERGY') {
+    } else if (object.logics.includes('ITEM ENERGY')
+            || object.logics.includes('ENERGY')
+            || object.typeName === 'ENERGY') {
       frame = currentLevel.frames.get('IENERGY.FME')
     } else if (object.logics.includes('DETONATOR')) {
       frame = currentLevel.frames.get('IDET.FME')
@@ -967,8 +978,57 @@ fm.on('ready', async (fm) => {
       frame = currentLevel.frames.get('IFUSION.FME')
     } else if (object.logics.includes('AUTOGUN')) {
       frame = currentLevel.frames.get('IAUTOGUN.FME')
-    } else if (object.typeName === 'BLUE') {
+    } else if (object.logics.includes('RED')
+            || object.logics.includes('ITEM RED') // NARSHADA
+            || object.typeName === 'RED') {
+      frame = currentLevel.frames.get('IKEYR.FME')
+    } else if (object.logics.includes('YELLOW')
+            || object.logics.includes('ITEM YELLOW') // ???
+            || object.typeName === 'YELLOW') {
+      frame = currentLevel.frames.get('IKEYY.FME')
+    } else if (object.logics.includes('BLUE')
+            || object.logics.includes('ITEM BLUE') // NARSHADA
+            || object.typeName === 'BLUE') {
       frame = currentLevel.frames.get('IKEYB.FME')
+    } else if (object.logics.includes('DATATAPE')) {
+      frame = currentLevel.frames.get('IDATA.FME')
+    } else if (object.logics.includes('PHRIK')) {
+      frame = currentLevel.frames.get('IPHRIK.FME')
+    } else if (object.logics.includes('DT_WEAPON')) {
+      frame = currentLevel.frames.get('IDTGUN.FME')
+    } else if (object.logics.includes('CANNON')) {
+      frame = currentLevel.frames.get('ICANNON.FME')
+    } else if (object.logics.includes('RIFLE')) {
+      if (currentLevel.frames.has('IST-GUNU.FME')) {
+        frame = currentLevel.frames.get('IST-GUNU.FME')
+      } else if (currentLevel.frames.has('IST-GUNI.FME')) {
+        frame = currentLevel.frames.get('IST-GUNI.FME')
+      }
+    } else if (object.logics.includes('MORTAR')) {
+      frame = currentLevel.frames.get('IMORTAR.FME')
+    } else if (object.logics.includes('SHELL')) {
+      frame = currentLevel.frames.get('ISHELL.FME')
+    } else if (object.logics.includes('SHELLS')) {
+      frame = currentLevel.frames.get('ISHELLS.FME')
+    } else if (object.logics.includes('MINE')) {
+      frame = currentLevel.frames.get('IMINE.FME')
+    } else if (object.logics.includes('LAND_MINE')) {
+      frame = currentLevel.frames.get('LANDMINE.FME')
+    } else if (object.logics.includes('MINES')) {
+      frame = currentLevel.frames.get('IMINES.FME')
+    } else if (object.logics.includes('PLASMA')) {
+      frame = currentLevel.frames.get('IPLAZMA.FME')
+    } else if (object.logics.includes('MISSILE')) {
+      frame = currentLevel.frames.get('IMSL.FME')
+    } else if (object.logics.includes('MISSILES')) {
+      frame = currentLevel.frames.get('IMSLS.FME')
+    } else if (object.logics.includes('MASK')
+            || object.typeName === 'MASK') {
+      frame = currentLevel.frames.get('IMASK.FME')
+    } else if (object.typeName === 'CLEATS') {
+      frame = currentLevel.frames.get('ICLEATS.FME')
+    } else if (object.logics.includes('CONCUSSION')) {
+      frame = currentLevel.frames.get('ICONCUS.FME')
     }
 
     if (!frame) {
@@ -1011,18 +1071,11 @@ fm.on('ready', async (fm) => {
     const spriteProjectionView = mat4.create()
     const spriteModel = mat4.create()
 
-    gl.useProgram(spriteProgram)
-
-    vec3.set(spritePosition, -x, y, z)
-
-    mat4.identity(spriteModel)
-    mat4.translate(spriteModel, spriteModel, spritePosition)
-    mat4.multiply(spriteModel, spriteModel, rotation)
-    mat4.multiply(spriteProjectionView, projectionView, spriteModel)
-
-    gl.uniformMatrix4fv(spriteProgramUniforms.u_mvp, false, spriteProjectionView)
-
     const sprite = currentLevel.sprites[object.data]
+    if (!sprite) {
+      // log.write('Skipping rendering sprite')
+      return
+    }
     const angles = sprite.states[0].angles.length
 
     const dx = Math.cos(-viewAngles[1] + Math.PI * 0.5)
@@ -1035,6 +1088,17 @@ fm.on('ready', async (fm) => {
 
     const { fme } = sprite.states[0].angles[0].frames[Math.floor(object.currentFrame)]
     object.currentFrame = (object.currentFrame + (sprite.states[0].frameRate / 60)) % sprite.states[0].angles[0].frames.length
+
+    gl.useProgram(spriteProgram)
+
+    vec3.set(spritePosition, -x, y, z)
+
+    mat4.identity(spriteModel)
+    mat4.translate(spriteModel, spriteModel, spritePosition)
+    mat4.multiply(spriteModel, spriteModel, rotation)
+    mat4.multiply(spriteProjectionView, projectionView, spriteModel)
+
+    gl.uniformMatrix4fv(spriteProgramUniforms.u_mvp, false, spriteProjectionView)
 
     gl.enable(gl.BLEND)
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
