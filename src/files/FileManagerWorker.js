@@ -142,9 +142,40 @@ self.addEventListener('message', (e) => {
   }
 })
 
+function load(gobFile) {
+  console.log(gobFile)
+  self.postMessage({
+    type: 'loading',
+    payload: gobFile
+  })
+  return gob.load(gobFile)
+}
+
+state.entries = []
+load('data/dark.gob')
+  .then((entries) => {
+    state.entries.push(...entries)
+    return load('data/sounds.gob')
+  })
+  .then((entries) => {
+    state.entries.push(...entries)
+    return load('data/sprites.gob')
+  })
+  .then((entries) => {
+    state.entries.push(...entries)
+    return load('data/textures.gob')
+  })
+  .then((entries) => {
+    state.entries.push(...entries)
+    self.postMessage({
+      type: 'ready'
+    })
+  })
+
 /**
  * Loads all the files needed to run Dark Forces.
  */
+/*
 gob
   .loadAll(
     'data/dark.gob',
@@ -158,3 +189,4 @@ gob
       type: 'ready'
     })
   })
+*/

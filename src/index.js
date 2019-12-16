@@ -35,7 +35,15 @@ import meshFragmentShader from './shaders/mesh.f.glsl'
 
 import { approximateToZero } from './utils/range'
 
+const loading = document.getElementById('loading')
+const loadingText = document.getElementById('loading-text')
 const fm = new FileManager()
+fm.on('loading', (payload) => {
+  loadingText.innerText = `Loading ${payload}`
+})
+fm.on('fetching', (payload) => {
+  loadingText.innerText = `Fetching ${payload}`
+})
 fm.on('ready', async (fm) => {
   window.fm = fm
   window.sound = sound
@@ -67,7 +75,9 @@ fm.on('ready', async (fm) => {
   const debug = document.querySelector('canvas#debug')
   const gl = engine.getContext('webgl2', { antialias: false, stencil: true })
   const cx = debug.getContext('2d', { antialias: false })
-
+  const isVRCapable = typeof navigator.getVRDisplays === 'function'
+  let VRDisplay, VRCurrentFrameData
+  console.log(gl)
   console.log('Stencil bits', gl.getParameter(gl.STENCIL_BITS))
 
   const LOOK_UPDOWN_LIMIT = 1.0
@@ -1260,6 +1270,79 @@ fm.on('ready', async (fm) => {
 
   }
 
+  /**
+   * Renders everything.
+   */
+  function renderVR(time) {
+    VRDisplay.getFrameData(VRCurrentFrameData)
+
+    if (gl.canvas.width !== gl.canvas.clientWidth * window.devicePixelRatio) {
+      gl.canvas.width = gl.canvas.clientWidth * window.devicePixelRatio
+      isDirty = true
+    }
+
+    if (gl.canvas.height !== gl.canvas.clientHeight * window.devicePixelRatio) {
+      gl.canvas.height = gl.canvas.clientHeight * window.devicePixelRatio
+      isDirty = true
+    }
+    //
+    vec3.sub(viewPosition, position, viewHeight)
+
+    mat4.copy(projection, VRCurrentFrameData.leftProjectionMatrix)
+    mat4.copy(view, VRCurrentFrameData.leftViewMatrix)
+    mat4.copy(view, rotation)
+
+    // Sets the model matrix.
+    /*
+    mat4.identity(model)
+    mat4.translate(model, model, viewPosition)
+    mat4.invert(view, model)
+    mat4.multiply(view, view, rotation)
+    mat4.multiply(projectionView, projection, view)
+    */
+    mat4.multiply(projectionView, projection, view)
+
+    gl.viewport(0, 0, gl.canvas.width * 0.5, gl.canvas.height)
+
+    // clear colors.
+    gl.clearColor(0, 0, 0, 1)
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+
+    /*
+    gl.enable(gl.CULL_FACE)
+    gl.cullFace(gl.BACK_FACE)
+    */
+
+    renderSectors()
+    renderObjects()
+
+    mat4.copy(projection, VRCurrentFrameData.rightProjectionMatrix)
+    mat4.copy(view, VRCurrentFrameData.rightViewMatrix)
+    mat4.copy(view, rotation)
+
+    // Sets the model matrix.
+    /*mat4.identity(model)
+    mat4.translate(model, model, viewPosition)
+    mat4.invert(view, model)
+    mat4.multiply(view, view, rotation)*/
+
+    mat4.multiply(projectionView, projection, view)
+
+    gl.viewport(gl.canvas.width * 0.5, 0, gl.canvas.width * 0.5, gl.canvas.height)
+
+    /*
+    gl.enable(gl.CULL_FACE)
+    gl.cullFace(gl.BACK_FACE)
+    */
+
+    renderSectors()
+    renderObjects()
+
+    VRDisplay.submitFrame()
+
+  }
+
+
   function renderDebugPlayer() {
 
   }
@@ -1514,9 +1597,18 @@ fm.on('ready', async (fm) => {
     input(time)
     update(time)
     visibility(time)
-    render(time)
+    if (VRDisplay && VRDisplay.isPresenting) {
+      renderVR(time)
+    } else {
+      render(time)
+    }
     renderDebug(time)
-    frameID = window.requestAnimationFrame(frame)
+
+    if (VRDisplay && VRDisplay.isPresenting) {
+      frameID = VRDisplay.requestAnimationFrame(frame)
+    } else {
+      frameID = window.requestAnimationFrame(frame)
+    }
   }
 
   function stop() {
@@ -1529,6 +1621,8 @@ fm.on('ready', async (fm) => {
   }
 
   function start() {
+    loading.style.display = 'none'
+
     mouse.start()
     touchpad.start()
     keyboard.start()
@@ -1558,8 +1652,42 @@ fm.on('ready', async (fm) => {
     gamepad.start()
 
     const fullScreenButton = document.querySelector('#full-screen-button')
+    fullScreenButton.style.display = 'block'
     fullScreenButton.onclick = () => {
-      mouse.lock(document.body).then(() => document.body.requestFullscreen())
+      document.body.requestFullscreen().then(() => {
+        mouse.lock(document.body)
+      })
+    }
+
+    const vrButton = document.querySelector('#vr-button')
+    vrButton.style.display = isVRCapable ? 'block' : 'none'
+    vrButton.onclick = () => {
+      navigator.getVRDisplays().then((displays) => {
+        if (!VRDisplay) {
+          console.log(displays)
+          // TODO: Hacer que se puedan elegir varios dispositivos
+          // VR.
+          VRDisplay = displays[0]
+          console.log(VRDisplay.displayId, VRDisplay.displayName)
+        }
+
+        if (!VRDisplay.isPresenting) {
+          if (!VRCurrentFrameData) {
+            VRCurrentFrameData = new VRFrameData()
+          }
+          VRDisplay
+            .requestPresent([{ source: engine }])
+            .then(() => {
+              window.cancelAnimationFrame(frameID)
+              frameID = VRDisplay.requestAnimationFrame(frame)
+            })
+        } else {
+          VRDisplay.cancelAnimationFrame(frameID)
+          VRDisplay.exitPresent().then(() => {
+            frameID = window.requestAnimationFrame(frame)
+          })
+        }
+      })
     }
 
     debug.onclick = () => mouse.lock(document.body)

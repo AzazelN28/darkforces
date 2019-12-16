@@ -9,10 +9,12 @@ export default class FileManager extends EventEmitter {
     super()
 
     const handler = (e) => {
-      e.target.removeEventListener('message', handler)
       if (e.data.type === 'ready') {
+        e.target.removeEventListener('message', handler)
         this._isReady = true
         this.emit('ready', this)
+      } else if (e.data.type === 'loading') {
+        this.emit('loading', e.data.payload)
       } else {
         throw new Error('Invalid message')
       }
@@ -53,6 +55,7 @@ export default class FileManager extends EventEmitter {
   }
 
   fetch(name) {
+    this.emit('fetching', name)
     return this._send('fetch', {
       name
     })
