@@ -1,7 +1,7 @@
 import earcut from 'earcut'
 import { vec2 } from 'gl-matrix'
 import { buildMidWall, buildAdjoinedBottomWall, buildAdjoinedTopWall, buildCeiling, buildFloor } from './build'
-import { from, isBetween } from '../utils/range'
+import { from, isWithin } from '../utils/range'
 
 /**
  * Triangulates a sector using the `earcut` algorithm.
@@ -124,8 +124,8 @@ function getLight(light) {
  */
 export function isInBoundingRect([x, , z], boundingRect) {
   const [minX, maxX, minZ, maxZ] = boundingRect
-  return isBetween(x, minX, maxX)
-      && isBetween(z, minZ, maxZ)
+  return isWithin(x, minX, maxX)
+      && isWithin(z, minZ, maxZ)
 }
 
 /**
@@ -137,9 +137,9 @@ export function isInBoundingRect([x, , z], boundingRect) {
  */
 export function isInBoundingBox([x, y, z], boundingBox) {
   const [minX, maxX, minY, maxY, minZ, maxZ] = boundingBox
-  return isBetween(x, minX, maxX)
-      && isBetween(y, minY, maxY)
-      && isBetween(z, minZ, maxZ)
+  return isWithin(x, minX, maxX)
+      && isWithin(y, minY, maxY)
+      && isWithin(z, minZ, maxZ)
 }
 
 /**

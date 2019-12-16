@@ -89,6 +89,8 @@ fm.on('ready', async (fm) => {
   const STRAFE_RIGHT = vec3.fromValues(1, 0, 0)
   const MOVEMENT_SCALE = 0.05
   const KYLE_HEIGHT = 5.8
+  const KYLE_STEP_HEIGHT = KYLE_HEIGHT * 0.5
+  const KYLE_RADIUS = 1.0
 
   const TEXTURE_BASE = 8
 
@@ -224,6 +226,8 @@ fm.on('ready', async (fm) => {
   const projection = mat4.create()
   const model = mat4.create()
   const view = mat4.create()
+  const viewPosition = vec3.create()
+  const viewHeight = vec3.fromValues(0, KYLE_HEIGHT, 0)
   const rotation = mat4.create()
   const projectionView = mat4.create()
 
@@ -504,74 +508,106 @@ fm.on('ready', async (fm) => {
         }
       }
 
-      if (currentSector.floor.altitude > position[1] + KYLE_HEIGHT) {
+      if (currentSector.floor.altitude > position[1]) {
         velocity[1] += GRAVITY
-      }
-
-      if (currentSector.floor.altitude <= position[1] + KYLE_HEIGHT) {
-        position[1] = currentSector.floor.altitude - KYLE_HEIGHT
+      } else if (currentSector.floor.altitude <= position[1]) {
+        position[1] = currentSector.floor.altitude
         isJumping = false
       }
 
-      vec3.add(nextPosition, position, velocity)
+      const dt = 0.01
+      let accumulator = 1.0
+      const scaledVelocity = vec3.create()
+      while (accumulator >= 0) {
+
+        vec3.copy(scaledVelocity, velocity)
+        vec3.scale(scaledVelocity, scaledVelocity, dt)
+
+        vec3.add(nextPosition, position, scaledVelocity)
+
+        // Esto debería ser algo así como "checkSectorCollisions"
+        // Por cada pared del sector actual...
+        for (const wall of currentSector.walls) {
+
+          // Proyectamos el punto sobre la pared para saber si
+          // el punto está contenido dentro de la pared.
+          const isOnWall = isPositionOnWall(nextPosition, currentSector, wall)
+          if (!isOnWall) {
+            continue
+          }
+
+          // Si el punto está contenido dentro de la pared entonces
+          // obtenemos la distancia del punto a la pared para saber si
+          // el punto colisiona con la pared.
+          const distance = wall.distance = signedDistanceToWall(nextPosition, currentSector, wall)
+
+          // Si la pared es "caminable" entonces lo que hacemos es
+          // tener en cuenta si la distancia es mayor o igual a 0,
+          // si es así, significa que hemos atravesado el portal y
+          // que nos encontramos al otro lado del portal.
+          if (wall.walk !== -1) {
+
+            if (distance > -KYLE_RADIUS && distance < KYLE_RADIUS) {
+
+              // Obtenemos el nuevo sector.
+              const nextSector = currentLevel.sectors[wall.walk]
+              const isLowerOrEqualToCurrentSector = nextSector.floor.altitude >= position[1]
+              const isHigherThanCurrentSectorButTraversable = nextSector.floor.altitude - position[1] > -KYLE_STEP_HEIGHT
+              const isHigherThanCurrentSector = nextSector.floor.altitude < position[1]
+              const wasTraversed = distance > 0
+
+              // Y ajustamos la altura.
+              if (isLowerOrEqualToCurrentSector) {
+
+                if (wasTraversed) {
+                  // Actualizamos el sector.
+                  currentSector = nextSector
+                  break
+                }
+
+              } else if (isHigherThanCurrentSectorButTraversable) {
+
+                if (wasTraversed) {
+                  nextPosition[1] = nextSector.floor.altitude
+                  // Actualizamos el sector.
+                  currentSector = nextSector
+                  break
+                }
+
+              } else if (isHigherThanCurrentSector) {
+
+                nextPosition[0] += wall.normal[0] * dt
+                nextPosition[2] += wall.normal[1] * dt
+
+              }
+
+            }
+
+          } else {
+
+            // Esta pared no se puede atravesar, así que
+            // comprobamos a qué distancia se encuentra
+            // y "empujamos" al jugador hacia fuera.
+            if (distance > -KYLE_RADIUS && distance < KYLE_RADIUS) {
+
+              nextPosition[0] += wall.normal[0] * dt
+              nextPosition[2] += wall.normal[1] * dt
+
+            }
+          }
+        }
+
+        vec3.copy(position, nextPosition)
+
+        accumulator -= dt
+      }
+
       vec3.scale(velocity, velocity, 0.9)
       approximateToZero(velocity[0], 0.01)
       approximateToZero(velocity[1], 0.01)
       approximateToZero(velocity[2], 0.01)
 
-      // Esto debería ser algo así como "checkSectorCollisions"
-      // Por cada pared del sector actual...
-      for (const wall of currentSector.walls) {
-
-        // Proyectamos el punto sobre la pared para saber si
-        // el punto está contenido dentro de la pared.
-        const isOnWall = isPositionOnWall(nextPosition, currentSector, wall)
-        if (!isOnWall) {
-          continue
-        }
-
-        // Si el punto está contenido dentro de la pared entonces
-        // obtenemos la distancia del punto a la pared para saber si
-        // el punto colisiona con la pared.
-        const distance = wall.distance = signedDistanceToWall(nextPosition, currentSector, wall)
-
-        // Si la pared es "caminable" entonces lo que hacemos es
-        // tener en cuenta si la distancia es mayor o igual a 0,
-        // si es así, significa que hemos atravesado el portal y
-        // que nos encontramos al otro lado del portal.
-        if (wall.walk !== -1) {
-
-          if (distance > -1) {
-            // Obtenemos el nuevo sector.
-            const nextSector = currentLevel.sectors[wall.walk]
-
-            // Y ajustamos la altura.
-            if (nextSector.floor.altitude <= position[1] + KYLE_HEIGHT) {
-              nextPosition[1] = nextSector.floor.altitude - KYLE_HEIGHT
-            }
-
-            // Actualizamos el sector.
-            currentSector = nextSector
-            break
-          }
-
-        } else {
-
-          // Esta pared no se puede atravesar, así que
-          // comprobamos a qué distancia se encuentra
-          // y "empujamos" al jugador hacia fuera.
-          if (distance > -1 && distance < 1) {
-
-            nextPosition[0] += wall.normal[0] * -distance * 0.5
-            nextPosition[2] += wall.normal[1] * -distance * 0.5
-
-          }
-        }
-      }
-
       currentLayer = currentSector.layer
-
-      vec3.copy(position, nextPosition)
 
       previousTime = time
 
@@ -622,7 +658,7 @@ fm.on('ready', async (fm) => {
 
         const isMirror = wall.mirror !== -1
         const isMirrorVisible = isMirror
-          ? true // visibleWalls.has(currentLevel.sectors[wall.adjoin].walls[wall.mirror])
+          ? visibleWalls.has(currentLevel.sectors[wall.adjoin].walls[wall.mirror])
           : false
 
         const isVisible = (leftDot < 0
@@ -651,7 +687,7 @@ fm.on('ready', async (fm) => {
   let isRenderWallIndexEnabled = true
   let isRenderOnlyCurrentLayer = true
   let isRenderOnlyCurrentSector = true
-  let isDebugEnabled = true
+  let isDebugEnabled = false
 
   function renderSector(sector) {
     // If there's floor texture, then we should render floor plane.
@@ -1085,8 +1121,12 @@ fm.on('ready', async (fm) => {
     const ry = z - position[2]
 
     const dot = dx * rx + dy * ry
+    if (!object.currentAngle) {
+      object.currentAngle = 0
+    }
+    object.currentAngle += 0.01
 
-    const { fme } = sprite.states[0].angles[0].frames[Math.floor(object.currentFrame)]
+    const { fme } = sprite.states[0].angles[Math.floor(object.currentAngle) % angles].frames[Math.floor(object.currentFrame)]
     object.currentFrame = (object.currentFrame + (sprite.states[0].frameRate / 60)) % sprite.states[0].angles[0].frames.length
 
     gl.useProgram(spriteProgram)
@@ -1196,9 +1236,12 @@ fm.on('ready', async (fm) => {
     mat4.rotateY(rotation, rotation, viewAngles[1])
     mat4.rotateX(rotation, rotation, viewAngles[0])
 
+    //
+    vec3.sub(viewPosition, position, viewHeight)
+
     // Sets the model matrix.
     mat4.identity(model)
-    mat4.translate(model, model, position)
+    mat4.translate(model, model, viewPosition)
     mat4.multiply(model, model, rotation)
     mat4.invert(view, model)
     mat4.multiply(projectionView, projection, view)
@@ -1416,18 +1459,45 @@ fm.on('ready', async (fm) => {
     cx.fillText(`${frameID} ${time}`, 0, textY += 16)
     cx.fillText(`${viewAngles.join(', ')}`, 0, textY += 16)
     cx.fillText(`${position.join(', ')}`, 0, textY += 16)
-    if (currentSectors.size > 0) {
-      for (const currentSector of currentSectors) {
-        cx.fillText(`Sector ${currentSector.index} ${currentSector.name} ${currentSector.layer}`, 0, textY += 16)
-        cx.fillText(`- Flags: ${currentSector.flags.join(', ')}`, 0, textY += 16)
-        cx.fillText(`- Light: ${currentSector.light}`, 0, textY += 16)
-        cx.fillText(`- Floor: ${currentSector.floor.altitude} ${currentSector.floor.texture.index} ${currentSector.floor.texture.x} ${currentSector.floor.texture.y} ${currentSector.floor.texture.flags.toString(2)}`, 0, textY += 16)
-        cx.fillText(`- Ceiling: ${currentSector.ceiling.altitude} ${currentSector.ceiling.texture.index} ${currentSector.ceiling.texture.x} ${currentSector.ceiling.texture.y} ${currentSector.ceiling.texture.flags.toString(2)}`, 0, textY += 16)
-        cx.fillText(`- Rect: ${currentSector.boundingRect.join(', ')}`, 0, textY += 16)
-        cx.fillText(`- Box: ${currentSector.boundingBox.join(', ')}`, 0, textY += 16)
+    cx.fillText(`Sector ${currentSector.index} ${currentSector.name} ${currentSector.layer}`, 0, textY += 16)
+    cx.fillText(`- Flags: ${currentSector.flags.join(', ')}`, 0, textY += 16)
+    cx.fillText(`- Light: ${currentSector.light}`, 0, textY += 16)
+    cx.fillText(`- Floor: ${currentSector.floor.altitude} ${currentSector.floor.texture.index} ${currentSector.floor.texture.x} ${currentSector.floor.texture.y} ${currentSector.floor.texture.flags.toString(2)}`, 0, textY += 16)
+    cx.fillText(`- Ceiling: ${currentSector.ceiling.altitude} ${currentSector.ceiling.texture.index} ${currentSector.ceiling.texture.x} ${currentSector.ceiling.texture.y} ${currentSector.ceiling.texture.flags.toString(2)}`, 0, textY += 16)
+    cx.fillText(`- Rect: ${currentSector.boundingRect.join(', ')}`, 0, textY += 16)
+    cx.fillText(`- Box: ${currentSector.boundingBox.join(', ')}`, 0, textY += 16)
+
+    const info = currentLevel.info.items.find((item) => item.name === currentSector.name)
+    if (info) {
+      cx.fillText(`${info.type}`, 0, textY += 16)
+      cx.fillText(`${info.num}`, 0, textY += 16)
+      cx.fillText(`${info.className}`, 0, textY += 16)
+      cx.fillText(`${info.action}`, 0, textY += 16)
+      cx.fillText(`${info.speed}`, 0, textY += 16)
+      cx.fillText(`${info.eventMask}`, 0, textY += 16)
+      cx.fillText(`${info.master}`, 0, textY += 16)
+      cx.fillText(`${info.center && info.center.join(', ')}`, 0, textY += 16)
+      cx.fillText(`Sounds ${info.sounds.length}`, 0, textY += 16)
+      for (const sound of info.sounds) {
+        cx.fillText(`${sound}`, 0, textY += 16)
+      }
+      cx.fillText(`Pages ${info.pages.length}`, 0, textY += 16)
+      for (const page of info.pages) {
+        cx.fillText(`${page.join(', ')}`, 0, textY += 16)
+      }
+      cx.fillText(`Stops ${info.stops.length}`, 0, textY += 16)
+      for (const stop of info.stops) {
+        cx.fillText(`  ${stop.join(', ')}`, 0, textY += 16)
+      }
+      cx.fillText(`Messages ${info.messages.length}`, 0, textY += 16)
+      for (const message of info.messages) {
+        cx.fillText(`  ${message.join(', ')}`, 0, textY += 16)
+      }
+      cx.fillText(`Clients ${info.clients.length}`, 0, textY += 16)
+      for (const client of info.clients) {
+        cx.fillText(`  ${client}`, 0, textY += 16)
       }
     }
-
     // FIX: There are some FMEs that aren't rendered.
     // cx.putImageData(currentLevel.frames.get('ICHARGE.FME').imageData, 0, 0)
     // cx.putImageData(currentLevel.sprites[0].states[0].angles[0].frames[0].fme.imageData, 0, 0)

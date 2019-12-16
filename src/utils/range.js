@@ -42,6 +42,16 @@ export function isBetween(value, min, max) {
 }
 
 /**
+ * Returns if a value is within a range
+ * @param {number} value
+ * @param {number} min
+ * @param {number} max
+ */
+export function isWithin(value, min, max) {
+  return value >= min && value <= max
+}
+
+/**
  * Returns zero if value is close enough
  * @param {number} value
  * @param {number} limit

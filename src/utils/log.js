@@ -8,7 +8,7 @@ let messageIndex = 0
  * @param {...} args
  */
 function write(...args) {
-  console.log(...args)
+  // console.log(...args)
   messages[messageIndex] = args.map(arg => `${arg}`).join(' ')
   messageIndex = (messageIndex + 1) % messages.length
 }
