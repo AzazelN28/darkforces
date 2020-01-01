@@ -302,6 +302,7 @@ fm.on('ready', async (fm) => {
       object.vertexBuffer = createVertexBuffer(gl, new Float32Array(object.vertices))
       console.log(object)
     }
+    console.log(mesh)
   }
   log.write('All meshes uploaded')
 
@@ -361,7 +362,7 @@ fm.on('ready', async (fm) => {
   window.currentLevel = currentLevel
 
   /**
-   *
+   * Entrada
    * @param {number} time
    */
   function input(time) {
@@ -369,8 +370,9 @@ fm.on('ready', async (fm) => {
     gamepad.update(time)
 
     if (mouse.isLocked()) {
-      viewAngles[0] += mouse.coords.movement[1] / gl.canvas.height
-      viewAngles[1] += -mouse.coords.movement[0] / gl.canvas.width
+      // TODO: Aquí podríamos añadir el parámetro mouse sensitivity.
+      viewAngles[0] += mouse.coords.movement[1] / (gl.canvas.height * 0.5)
+      viewAngles[1] += -mouse.coords.movement[0] / (gl.canvas.width * 0.5)
     } else if (touchpad.isEnabled()) {
       viewAngles[0] += touchpad.rightStick[1] * 0.125
       viewAngles[1] += -touchpad.rightStick[0] * 0.125
@@ -379,6 +381,8 @@ fm.on('ready', async (fm) => {
       viewAngles[1] += -gamepad.rightStick[0] * 0.125
     }
 
+    // If we're in game mode then we limit
+    // view angles.
     if (isGameMode) {
       if (viewAngles[0] < -LOOK_UPDOWN_LIMIT) {
         viewAngles[0] = -LOOK_UPDOWN_LIMIT
@@ -508,10 +512,13 @@ fm.on('ready', async (fm) => {
         }
       }
 
-      if (currentSector.floor.altitude > position[1]) {
+      const floorAltitude = (currentSector.second.altitude !== 0)
+        ? currentSector.floor.altitude + currentSector.second.altitude
+        : currentSector.floor.altitude
+      if (floorAltitude > position[1]) {
         velocity[1] += GRAVITY
-      } else if (currentSector.floor.altitude <= position[1]) {
-        position[1] = currentSector.floor.altitude
+      } else if (floorAltitude <= position[1]) {
+        position[1] = floorAltitude
         isJumping = false
       }
 
@@ -551,9 +558,12 @@ fm.on('ready', async (fm) => {
 
               // Obtenemos el nuevo sector.
               const nextSector = currentLevel.sectors[wall.walk]
-              const isLowerOrEqualToCurrentSector = nextSector.floor.altitude >= position[1]
-              const isHigherThanCurrentSectorButTraversable = nextSector.floor.altitude - position[1] > -KYLE_STEP_HEIGHT
-              const isHigherThanCurrentSector = nextSector.floor.altitude < position[1]
+              const nextFloorAltitude = (nextSector.second.altitude !== 0)
+                ? nextSector.floor.altitude + nextSector.second.altitude
+                : nextSector.floor.altitude
+              const isLowerOrEqualToCurrentSector = nextFloorAltitude >= position[1]
+              const isHigherThanCurrentSectorButTraversable = nextFloorAltitude - position[1] > -KYLE_STEP_HEIGHT
+              const isHigherThanCurrentSector = nextFloorAltitude < position[1]
               const wasTraversed = distance > 0
 
               // Y ajustamos la altura.
@@ -568,7 +578,7 @@ fm.on('ready', async (fm) => {
               } else if (isHigherThanCurrentSectorButTraversable) {
 
                 if (wasTraversed) {
-                  nextPosition[1] = nextSector.floor.altitude
+                  nextPosition[1] = nextFloorAltitude
                   // Actualizamos el sector.
                   currentSector = nextSector
                   break
@@ -656,9 +666,14 @@ fm.on('ready', async (fm) => {
         const leftDot = direction[0] * rsx + direction[1] * rsy
         const rightDot = direction[0] * rex + direction[1] * rey
 
+        const hasAdjoin = wall.adjoin !== -1
+        const adjoinSector = hasAdjoin
+          ? currentLevel.sectors[wall.adjoin]
+          : null
+
         const isMirror = wall.mirror !== -1
-        const isMirrorVisible = isMirror
-          ? visibleWalls.has(currentLevel.sectors[wall.adjoin].walls[wall.mirror])
+        const isMirrorVisible = isMirror && hasAdjoin
+          ? visibleWalls.has(adjoinSector.walls[wall.mirror])
           : false
 
         const isVisible = (leftDot < 0
@@ -671,7 +686,7 @@ fm.on('ready', async (fm) => {
 
         visibleWalls.add(wall)
         if (wall.adjoin !== -1) {
-          const sectorToVisit = currentLevel.sectors[wall.adjoin]
+          const sectorToVisit = adjoinSector
           if (!visibleSectors.has(sectorToVisit) && visibleSectors.size < MAX_VISIBLE_SECTORS) {
             visibleSectors.add(sectorToVisit)
             sectorsToVisit.push(sectorToVisit)
@@ -1184,6 +1199,12 @@ fm.on('ready', async (fm) => {
     gl.uniformMatrix4fv(meshProgramUniforms.u_mvp, false, meshProjectionView)
 
     const mesh = currentLevel.meshes[object.data]
+    // TODO: Aquí lo que deberíamos hacer es en vez de tener "objects"
+    // y cosas así, lo que deberíamos tener son:
+    //  - vertexObjects
+    //  - coloredObjects
+    //  - texturedObjects
+    // Cada uno utilizaría diferentes programas para renderizar los elementos.
     for (const object of mesh.objects) {
       gl.bindBuffer(gl.ARRAY_BUFFER, object.vertexBuffer)
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, object.indexBuffer)
@@ -1191,7 +1212,14 @@ fm.on('ready', async (fm) => {
       gl.enableVertexAttribArray(meshProgramAttributes.a_coords)
       gl.vertexAttribPointer(meshProgramAttributes.a_coords, 3, gl.FLOAT, gl.FALSE, 3 * 4, 0)
 
-      gl.drawElements(gl.TRIANGLES, object.indices.length, gl.UNSIGNED_SHORT, 0)
+      // TODO: Esto debería usarse si el mesh tiene textura.
+      // gl.enableVertexAttribArray(meshProgramAttributes.a_texcoords)
+      // gl.vertexAttribPointer(meshProgramAttributes.a_texcoords, 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
+      if (mesh.name === 'death4') {
+        gl.drawArrays(gl.POINTS, 0, object.vertices.length / 3)
+      } else {
+        gl.drawElements(gl.TRIANGLES, object.indices.length, gl.UNSIGNED_SHORT, 0)
+      }
     }
   }
 
@@ -1257,10 +1285,6 @@ fm.on('ready', async (fm) => {
 
     renderSectors()
     renderObjects()
-
-  }
-
-  function renderDebugPlayer() {
 
   }
 
@@ -1464,6 +1488,7 @@ fm.on('ready', async (fm) => {
     cx.fillText(`- Light: ${currentSector.light}`, 0, textY += 16)
     cx.fillText(`- Floor: ${currentSector.floor.altitude} ${currentSector.floor.texture.index} ${currentSector.floor.texture.x} ${currentSector.floor.texture.y} ${currentSector.floor.texture.flags.toString(2)}`, 0, textY += 16)
     cx.fillText(`- Ceiling: ${currentSector.ceiling.altitude} ${currentSector.ceiling.texture.index} ${currentSector.ceiling.texture.x} ${currentSector.ceiling.texture.y} ${currentSector.ceiling.texture.flags.toString(2)}`, 0, textY += 16)
+    cx.fillText(`- Second: ${currentSector.second.altitude}`, 0, textY += 16)
     cx.fillText(`- Rect: ${currentSector.boundingRect.join(', ')}`, 0, textY += 16)
     cx.fillText(`- Box: ${currentSector.boundingBox.join(', ')}`, 0, textY += 16)
 
