@@ -33,14 +33,16 @@ import spriteFragmentShader from './shaders/sprite.f.glsl'
 import meshVertexShader from './shaders/mesh.v.glsl'
 import meshFragmentShader from './shaders/mesh.f.glsl'
 
-import { approximateToZero } from './utils/range'
+import { approximateToZero, to } from './utils/range'
+
+import { SectorFlagName } from './level/constants'
+import { createCanvasFromImageData } from './utils/canvas'
 
 const fm = new FileManager()
 fm.on('ready', async (fm) => {
   window.fm = fm
   window.sound = sound
 
-  log.write(await fm.fetch('JEDI.LVL'))
   const sounds = await Promise.all(baseSounds.map((sound, index, list) => {
     log.write(`Loading sound ${sound} ${index+1}/${list.length}`)
     return fm.fetch(sound)
@@ -57,16 +59,125 @@ fm.on('ready', async (fm) => {
     ? url.searchParams.get('level')
     : 'SECBASE'
 
-  log.write(await fm.fetch('JEDI.LVL'))
   log.write(levelName)
   const currentLevel = await level.load(fm, levelName)
   log.write(currentLevel)
+
+  // ---------------------------------------------------
+  // Carga la interfaz
+  // ---------------------------------------------------
+
+  // Status
+  const statusLeft = await fm.fetch('STATUSLF.BM')
+  const statusRight = await fm.fetch('STATUSRT.BM')
+  const statusLeftImage = createCanvasFromImageData(statusLeft.imageData)
+  const statusRightImage = createCanvasFromImageData(statusRight.imageData)
+  console.log(statusLeft, statusRight)
+
+  const lightOn = await fm.fetch('LIGHTON.BM')
+  const lightOff = await fm.fetch('LIGHTOFF.BM')
+  const lightOnImage = createCanvasFromImageData(lightOn.imageData)
+  const lightOffImage = createCanvasFromImageData(lightOff.imageData)
+
+  const rightHand = await fm.fetch('RHAND1.BM')
+  const rightHandImage = createCanvasFromImageData(rightHand.imageData)
+
+  const gasMask = await fm.fetch('GMASK.BM')
+
+  const gasMaskImage = createCanvasFromImageData(gasMask.imageData)
+
+  const punch = [
+    await fm.fetch('PUNCH1.BM'),
+    await fm.fetch('PUNCH2.BM'),
+    await fm.fetch('PUNCH3.BM')
+  ]
+
+  const punchImages = punch.map((bm) => createCanvasFromImageData(bm.imageData))
+
+  const pistol = [
+    await fm.fetch('PISTOL1.BM'),
+    await fm.fetch('PISTOL2.BM'),
+    await fm.fetch('PISTOL3.BM')
+  ]
+
+  const pistolImages = pistol.map((bm) => createCanvasFromImageData(bm.imageData))
+
+  const rifle = [
+    await fm.fetch('RIFLE1.BM'),
+    await fm.fetch('RIFLE2.BM')
+  ]
+
+  const rifleImages = rifle.map((bm) => createCanvasFromImageData(bm.imageData))
+
+  const thermalDetonator = [
+    await fm.fetch('THERM1.BM'),
+    await fm.fetch('THERM2.BM'),
+    await fm.fetch('THERM3.BM')
+  ]
+
+  const thermalDetonatorImages = thermalDetonator.map((bm) => createCanvasFromImageData(bm.imageData))
+
+  const autoGun = [
+    await fm.fetch('AUTOGUN1.BM'),
+    await fm.fetch('AUTOGUN2.BM'),
+    await fm.fetch('AUTOGUN3.BM')
+  ]
+
+  const autoGunImages = autoGun.map((bm) => createCanvasFromImageData(bm.imageData))
+
+  const fusion = [
+    await fm.fetch('FUSION1.BM'),
+    await fm.fetch('FUSION2.BM'),
+    await fm.fetch('FUSION3.BM'),
+    await fm.fetch('FUSION4.BM'),
+    await fm.fetch('FUSION5.BM'),
+    await fm.fetch('FUSION6.BM')
+  ]
+
+  const fusionImages = fusion.map((bm) => createCanvasFromImageData(bm.imageData))
+
+  const mortar = [
+    await fm.fetch('MORTAR1.BM'),
+    await fm.fetch('MORTAR2.BM'),
+    await fm.fetch('MORTAR3.BM'),
+    await fm.fetch('MORTAR4.BM')
+  ]
+
+  const mortarImages = mortar.map((bm) => createCanvasFromImageData(bm.imageData))
+
+  const mine = [
+    await fm.fetch('CLAY1.BM'),
+    await fm.fetch('CLAY2.BM')
+  ]
+
+  const mineImages = mine.map((bm) => createCanvasFromImageData(bm.imageData))
+
+  const concussionRifle = [
+    await fm.fetch('CONCUSS1.BM'),
+    await fm.fetch('CONCUSS2.BM'),
+    await fm.fetch('CONCUSS3.BM')
+  ]
+
+  const concussionRifleImages = concussionRifle.map((bm) => createCanvasFromImageData(bm.imageData))
+
+  const assaultCannon = [
+    await fm.fetch('ASSAULT1.BM'),
+    await fm.fetch('ASSAULT2.BM'),
+    await fm.fetch('ASSAULT3.BM'),
+    await fm.fetch('ASSAULT4.BM')
+  ]
+
+  const assaultCannonImages = assaultCannon.map((bm) => createCanvasFromImageData(bm.imageData))
 
   const { fogColor } = currentLevel
   const engine = document.querySelector('canvas#engine')
   const debug = document.querySelector('canvas#debug')
   const gl = engine.getContext('webgl2', { antialias: false, stencil: true })
+  gl.imageSmoothingEnabled = false
+  gl.imageSmoothingQuality = 'low'
   const cx = debug.getContext('2d', { antialias: false })
+  cx.imageSmoothingEnabled = false
+  cx.imageSmoothingQuality = 'low'
 
   console.log('Stencil bits', gl.getParameter(gl.STENCIL_BITS))
 
@@ -106,27 +217,29 @@ fm.on('ready', async (fm) => {
 
   let isJumping = false
 
-  /*
-  const mediaRecorder = new MediaRecorder(engine.captureStream(60))
-  let isRecording = false
-  let mediaChunks = []
-  mediaRecorder.ondataavailable = (e) => {
-    mediaChunks.push(e.data)
+  let mediaRecorder, isRecording = false
+  if (url.searchParams.has('recording')) {
+    mediaRecorder = new MediaRecorder(engine.captureStream(60))
+    const mediaChunks = []
+    mediaRecorder.ondataavailable = (e) => {
+      mediaChunks.push(e.data)
+    }
+    mediaRecorder.onstart = () => {
+      while (mediaChunks.pop());
+      isRecording = true
+    }
+    mediaRecorder.onstop = () => {
+      isRecording = false
+      const blob = new Blob(mediaChunks, { type: mediaRecorder.mimeType })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'df.mp4'
+      a.dispatchEvent(new MouseEvent('click'))
+    }
   }
-  mediaRecorder.onstart = () => {
-    isRecording = true
-  }
-  mediaRecorder.onstop = () => {
-    isRecording = false
-    const blob = new Blob(mediaChunks, { type: mediaRecorder.mimeType })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'df.mp4'
-    a.dispatchEvent(new MouseEvent('click'))
-  }
-  */
 
+  const collisionWalls = new Set()
   const currentSectors = new Set()
   const sectorsToVisit = []
   const visibleSectors = new Set()
@@ -224,6 +337,7 @@ fm.on('ready', async (fm) => {
   const viewAngles = vec3.create()
   const direction = vec2.create()
   const projection = mat4.create()
+  const ortho = mat4.create()
   const model = mat4.create()
   const view = mat4.create()
   const viewPosition = vec3.create()
@@ -493,6 +607,8 @@ fm.on('ready', async (fm) => {
 
     if (isGameMode) {
 
+      collisionWalls.clear()
+
       /*
       if (currentSectors.size === 0) {
         const currentSector = getCurrentSector(position, currentLevel.sectors)
@@ -556,6 +672,8 @@ fm.on('ready', async (fm) => {
 
             if (distance > -KYLE_RADIUS && distance < KYLE_RADIUS) {
 
+              collisionWalls.add(wall)
+
               // Obtenemos el nuevo sector.
               const nextSector = currentLevel.sectors[wall.walk]
               const nextFloorAltitude = (nextSector.second.altitude !== 0)
@@ -599,6 +717,8 @@ fm.on('ready', async (fm) => {
             // comprobamos a qué distancia se encuentra
             // y "empujamos" al jugador hacia fuera.
             if (distance > -KYLE_RADIUS && distance < KYLE_RADIUS) {
+
+              collisionWalls.add(wall)
 
               nextPosition[0] += wall.normal[0] * dt
               nextPosition[2] += wall.normal[1] * dt
@@ -1255,6 +1375,7 @@ fm.on('ready', async (fm) => {
 
     if (isDirty) {
       mat4.perspective(projection, Math.PI * 0.25, gl.canvas.width / gl.canvas.height, 0.1, 1000.0)
+      mat4.ortho(ortho, 0, gl.canvas.width, gl.canvas.height, 0, 0.01, 10.0)
       gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
       isDirty = false
     }
@@ -1288,26 +1409,167 @@ fm.on('ready', async (fm) => {
 
   }
 
+  function getDebugSectorFlags(sector) {
+    let str = ''
+    const bits = sector.flags[0]
+    for (let i = 0; i < 32; i++) {
+      const bit = Math.pow(2, i)
+      const isBitRaised = (bits & bit) === bit
+      if (isBitRaised) {
+        if (SectorFlagName.has(bit)) {
+          str += ' ' + SectorFlagName.get(bit) + ', '
+        } else {
+          str += ' ' + bit.toString(2).padStart(32, 0) + ', '
+        }
+      }
+    }
+    str += ' ' + sector.flags.join(', ')
+    return str
+  }
+
+  function renderHUD(time) {
+
+    const weaponShow = to(((viewAngles[0] + 1.0) * 0.5), 0.25, 1.0)
+    // TODO: This is not FINAL, this is just a test to see how to
+    // render weapons and status hud.
+    switch (currentWeapon) {
+    case Weapon.FIST:
+      {
+        const scaleX = punchImages[0].width / 320
+        const scaleY = punchImages[0].height / 200
+        const width = scaleX * cx.canvas.height
+        const height = scaleY * cx.canvas.height
+        cx.drawImage(punchImages[0], 0, cx.canvas.height - (height * weaponShow), width, height)
+      }
+      {
+        const scaleX = rightHandImage.width / 320
+        const scaleY = rightHandImage.height / 200
+        const width = scaleX * cx.canvas.height
+        const height = scaleY * cx.canvas.height
+        cx.drawImage(rightHandImage, cx.canvas.width - width, cx.canvas.height - (height * weaponShow), width, height)
+      }
+      break
+    case Weapon.BRYAR_PISTOL:
+      {
+        const scaleX = pistolImages[0].width / 320
+        const scaleY = pistolImages[0].height / 200
+        const width = scaleX * cx.canvas.height
+        const height = scaleY * cx.canvas.height
+        cx.drawImage(pistolImages[0], (cx.canvas.width - width) * 0.5, cx.canvas.height - (height * weaponShow), width, height)
+      }
+      break
+    case Weapon.BLASTER_RIFLE:
+      {
+        const scaleX = rifleImages[0].width / 320
+        const scaleY = rifleImages[0].height / 200
+        const width = scaleX * cx.canvas.height
+        const height = scaleY * cx.canvas.height
+        cx.drawImage(rifleImages[0], (cx.canvas.width - width) * 0.5, cx.canvas.height - (height * weaponShow), width, height)
+      }
+      break
+    case Weapon.THERMAL_DETONATOR:
+      {
+        const scaleX = thermalDetonatorImages[0].width / 320
+        const scaleY = thermalDetonatorImages[0].height / 200
+        const width = scaleX * cx.canvas.height
+        const height = scaleY * cx.canvas.height
+        cx.drawImage(thermalDetonatorImages[0], (cx.canvas.width - width) * 0.5, cx.canvas.height - (height * weaponShow), width, height)
+      }
+      break
+    case Weapon.IMPERIAL_REPEATER_GUN:
+      {
+        const scaleX = autoGunImages[0].width / 320
+        const scaleY = autoGunImages[0].height / 200
+        const width = scaleX * cx.canvas.height
+        const height = scaleY * cx.canvas.height
+        cx.drawImage(autoGunImages[0], (cx.canvas.width - width) * 0.5, cx.canvas.height - (height * weaponShow), width, height)
+      }
+      break
+    case Weapon.JERON_FUSION_CUTTER:
+      {
+        const scaleX = fusionImages[0].width / 320
+        const scaleY = fusionImages[0].height / 200
+        const width = scaleX * cx.canvas.height
+        const height = scaleY * cx.canvas.height
+        cx.drawImage(fusionImages[0], (cx.canvas.width - width) * 0.5, cx.canvas.height - (height * weaponShow), width, height)
+      }
+      break
+    case Weapon.MINES:
+      {
+        const scaleX = mineImages[0].width / 320
+        const scaleY = mineImages[0].height / 200
+        const width = scaleX * cx.canvas.height
+        const height = scaleY * cx.canvas.height
+        cx.drawImage(mineImages[0], (cx.canvas.width - width) * 0.5, cx.canvas.height - (height * weaponShow), width, height)
+      }
+      break
+    case Weapon.PACKERED_MORTAR_GUN:
+      {
+        const scaleX = mortarImages[0].width / 320
+        const scaleY = mortarImages[0].height / 200
+        const width = scaleX * cx.canvas.height
+        const height = scaleY * cx.canvas.height
+        cx.drawImage(mortarImages[0], cx.canvas.width - width, cx.canvas.height - (height * weaponShow), width, height)
+      }
+      break
+    case Weapon.STOUKER_CONCUSSION_RIFLE:
+      {
+        const scaleX = concussionRifleImages[0].width / 320
+        const scaleY = concussionRifleImages[0].height / 200
+        const width = scaleX * cx.canvas.height
+        const height = scaleY * cx.canvas.height
+        cx.drawImage(concussionRifleImages[0], (cx.canvas.width - width) * 0.5, cx.canvas.height - (height * weaponShow), width, height)
+      }
+      break
+    case Weapon.ASSAULT_CANNON:
+      {
+        const scaleX = assaultCannonImages[0].width / 320
+        const scaleY = assaultCannonImages[0].height / 200
+        const width = scaleX * cx.canvas.height
+        const height = scaleY * cx.canvas.height
+        cx.drawImage(assaultCannonImages[0], cx.canvas.width - width, cx.canvas.height - (height * weaponShow), width, height)
+      }
+      break
+    }
+
+    const statusLeftScaleX = statusLeftImage.width / 320
+    const statusLeftScaleY = statusLeftImage.height / 200
+    const statusLeftWidth = statusLeftScaleX * cx.canvas.height
+    const statusLeftHeight = statusLeftScaleY * cx.canvas.height
+
+    const statusRightScaleX = statusRightImage.width / 320
+    const statusRightScaleY = statusRightImage.height / 200
+    const statusRightWidth = statusRightScaleX * cx.canvas.height
+    const statusRightHeight = statusRightScaleY * cx.canvas.height
+
+    cx.drawImage(statusLeftImage, 0, cx.canvas.height - statusLeftHeight, statusLeftWidth, statusLeftHeight)
+    cx.drawImage(statusRightImage, cx.canvas.width - statusRightWidth, cx.canvas.height - statusRightHeight, statusRightWidth, statusRightHeight)
+
+    if (url.searchParams.has('recording')) {
+      cx.font = '16px monospace'
+      cx.textAlign = 'left'
+      cx.textBaseline = 'bottom'
+      cx.fillStyle = '#fff'
+      if (!isRecording) {
+        cx.fillText('Not recording', 0, cx.canvas.height - 16)
+        cx.fillText('Press Y to start recording', 0, cx.canvas.height)
+      } else {
+        cx.fillText('Recording', 0, cx.canvas.height - 16)
+        cx.fillText('Press Y to stop recording', 0, cx.canvas.height)
+      }
+    }
+
+  }
+
   /**
    * Renders debug information
    * @param {number} time
    */
   function renderDebug(time) {
-    if (cx.canvas.width !== cx.canvas.clientWidth) {
-      cx.canvas.width = cx.canvas.clientWidth
-    }
-
-    if (cx.canvas.height !== cx.canvas.clientHeight) {
-      cx.canvas.height = cx.canvas.clientHeight
-    }
-
-    cx.clearRect(0, 0, cx.canvas.width, cx.canvas.height)
 
     if (!isDebugEnabled) {
       return
     }
-
-    log.render(cx)
 
     const scx = cx.canvas.width >> 1
     const scy = cx.canvas.height >> 1
@@ -1484,7 +1746,8 @@ fm.on('ready', async (fm) => {
     cx.fillText(`${viewAngles.join(', ')}`, 0, textY += 16)
     cx.fillText(`${position.join(', ')}`, 0, textY += 16)
     cx.fillText(`Sector ${currentSector.index} ${currentSector.name} ${currentSector.layer}`, 0, textY += 16)
-    cx.fillText(`- Flags: ${currentSector.flags.join(', ')}`, 0, textY += 16)
+    //cx.fillText(`- Flags: ${currentSector.flags.join(', ')}`, 0, textY += 16)
+    cx.fillText(`- Flags: ${getDebugSectorFlags(currentSector)}`, 0, textY += 16)
     cx.fillText(`- Light: ${currentSector.light}`, 0, textY += 16)
     cx.fillText(`- Floor: ${currentSector.floor.altitude} ${currentSector.floor.texture.index} ${currentSector.floor.texture.x} ${currentSector.floor.texture.y} ${currentSector.floor.texture.flags.toString(2)}`, 0, textY += 16)
     cx.fillText(`- Ceiling: ${currentSector.ceiling.altitude} ${currentSector.ceiling.texture.index} ${currentSector.ceiling.texture.x} ${currentSector.ceiling.texture.y} ${currentSector.ceiling.texture.flags.toString(2)}`, 0, textY += 16)
@@ -1492,16 +1755,27 @@ fm.on('ready', async (fm) => {
     cx.fillText(`- Rect: ${currentSector.boundingRect.join(', ')}`, 0, textY += 16)
     cx.fillText(`- Box: ${currentSector.boundingBox.join(', ')}`, 0, textY += 16)
 
+    for (const wall of collisionWalls) {
+      cx.fillText(`Wall ${wall.index} ${wall.name}`, 0, textY += 16)
+      //cx.fillText(`- Flags: ${wall.flags.join(', ')}`, 0, textY += 16)
+      cx.fillText(`- Flags: ${wall.flags.join(', ')}`, 0, textY += 16)
+      cx.fillText(`- Light: ${wall.light}`, 0, textY += 16)
+      cx.fillText(`- Walk: ${wall.walk}`, 0, textY += 16)
+      cx.fillText(`- Mirror: ${wall.mirror}`, 0, textY += 16)
+      cx.fillText(`- Adjoin: ${wall.adjoin}`, 0, textY += 16)
+      cx.fillText(`- Sign: ${wall.sign.value}, ${wall.sign.x}, ${wall.sign.y}`, 0, textY += 16)
+    }
+
     const info = currentLevel.info.items.find((item) => item.name === currentSector.name)
     if (info) {
-      cx.fillText(`${info.type}`, 0, textY += 16)
-      cx.fillText(`${info.num}`, 0, textY += 16)
-      cx.fillText(`${info.className}`, 0, textY += 16)
-      cx.fillText(`${info.action}`, 0, textY += 16)
-      cx.fillText(`${info.speed}`, 0, textY += 16)
-      cx.fillText(`${info.eventMask}`, 0, textY += 16)
-      cx.fillText(`${info.master}`, 0, textY += 16)
-      cx.fillText(`${info.center && info.center.join(', ')}`, 0, textY += 16)
+      cx.fillText(`Type: ${info.type}`, 0, textY += 16)
+      cx.fillText(`Num: ${info.num}`, 0, textY += 16)
+      cx.fillText(`ClassName: ${info.className}`, 0, textY += 16)
+      cx.fillText(`Action: ${info.action}`, 0, textY += 16)
+      cx.fillText(`Speed: ${info.speed}`, 0, textY += 16)
+      cx.fillText(`EventMask: ${info.eventMask}`, 0, textY += 16)
+      cx.fillText(`Master: ${info.master}`, 0, textY += 16)
+      cx.fillText(`Center: ${info.center && info.center.join(', ')}`, 0, textY += 16)
       cx.fillText(`Sounds ${info.sounds.length}`, 0, textY += 16)
       for (const sound of info.sounds) {
         cx.fillText(`${sound}`, 0, textY += 16)
@@ -1536,10 +1810,21 @@ fm.on('ready', async (fm) => {
    * @param {number} time
    */
   function frame(time) {
+    if (cx.canvas.width !== cx.canvas.clientWidth) {
+      cx.canvas.width = cx.canvas.clientWidth
+    }
+
+    if (cx.canvas.height !== cx.canvas.clientHeight) {
+      cx.canvas.height = cx.canvas.clientHeight
+    }
+
+    cx.clearRect(0, 0, cx.canvas.width, cx.canvas.height)
+
     input(time)
     update(time)
     visibility(time)
     render(time)
+    renderHUD(time)
     renderDebug(time)
     frameID = window.requestAnimationFrame(frame)
   }
@@ -1557,7 +1842,17 @@ fm.on('ready', async (fm) => {
     mouse.start()
     touchpad.start()
     keyboard.start()
-    keyboard.on('Digit1', () => isDebugEnabled = !isDebugEnabled)
+    keyboard.on('Digit1', () => currentWeapon = Weapon.FIST)
+    keyboard.on('Digit2', () => currentWeapon = Weapon.BRYAR_PISTOL)
+    keyboard.on('Digit3', () => currentWeapon = Weapon.BLASTER_RIFLE)
+    keyboard.on('Digit4', () => currentWeapon = Weapon.THERMAL_DETONATOR)
+    keyboard.on('Digit5', () => currentWeapon = Weapon.IMPERIAL_REPEATER_GUN)
+    keyboard.on('Digit6', () => currentWeapon = Weapon.JERON_FUSION_CUTTER)
+    keyboard.on('Digit7', () => currentWeapon = Weapon.MINES)
+    keyboard.on('Digit8', () => currentWeapon = Weapon.PACKERED_MORTAR_GUN)
+    keyboard.on('Digit9', () => currentWeapon = Weapon.STOUKER_CONCUSSION_RIFLE)
+    keyboard.on('Digit0', () => currentWeapon = Weapon.ASSAULT_CANNON)
+    keyboard.on('Tab', () => isDebugEnabled = !isDebugEnabled)
     keyboard.on('BracketLeft', () => {
       if (zoom > MIN_ZOOM) zoom--
     })
@@ -1570,15 +1865,16 @@ fm.on('ready', async (fm) => {
     keyboard.on('KeyX', () => {
       if (currentLayer < MAX_LAYER) currentLayer++
     })
-    /*
-    keyboard.on('KeyY', () => {
-      if (isRecording) {
-        mediaRecorder.stop()
-      } else {
-        mediaRecorder.start()
-      }
-    })
-    */
+
+    if (url.searchParams.has('recording')) {
+      keyboard.on('KeyY', () => {
+        if (isRecording) {
+          mediaRecorder.stop()
+        } else {
+          mediaRecorder.start()
+        }
+      })
+    }
 
     gamepad.start()
 
