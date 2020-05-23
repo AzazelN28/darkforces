@@ -39,11 +39,9 @@ const progress = document.querySelector('progress')
 const fm = new FileManager()
 fm.on('error', () => {
   console.error('Error')
-})
-fm.on('progress', (e) => {
-  progress.value = e.progress
-})
-fm.on('ready', async (fm) => {
+}).on('progress', (e) => {
+  progress.value = Math.floor(e.progress * 100)
+}).on('ready', async (fm) => {
   window.fm = fm
   window.sound = sound
 
@@ -219,6 +217,7 @@ fm.on('ready', async (fm) => {
   const viewAngles = vec3.create()
   const direction = vec2.create()
   const projection = mat4.create()
+  const orthographic = mat4.create()
   const model = mat4.create()
   const view = mat4.create()
   const viewPosition = vec3.create()
@@ -1274,6 +1273,46 @@ fm.on('ready', async (fm) => {
   }
 
   /**
+   * Render HUD
+   */
+  function renderHUD() {
+    const spritePosition = vec3.create()
+    const spriteProjectionView = mat4.create()
+    const spriteModel = mat4.create()
+
+    gl.useProgram(spriteProgram)
+
+    vec3.set(spritePosition, -x, y, z)
+
+    mat4.identity(spriteModel)
+    mat4.translate(spriteModel, spriteModel, spritePosition)
+    mat4.multiply(spriteProjectionView, projectionView, spriteModel)
+
+    gl.uniformMatrix4fv(spriteProgramUniforms.u_mvp, false, spriteProjectionView)
+
+    gl.enable(gl.BLEND)
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, fme.texture)
+    gl.uniform2f(spriteProgramUniforms.u_size, fme.width, fme.height)
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, spriteBuffer)
+
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
+
+    gl.enableVertexAttribArray(spriteProgramAttributes.a_coords)
+    gl.vertexAttribPointer(spriteProgramAttributes.a_coords, 3, gl.FLOAT, gl.FALSE, 5 * 4, 0)
+
+    gl.enableVertexAttribArray(spriteProgramAttributes.a_texcoords)
+    gl.vertexAttribPointer(spriteProgramAttributes.a_texcoords, 2, gl.FLOAT, gl.FALSE, 5 * 4, 3 * 4)
+
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
+
+    gl.disable(gl.BLEND)
+  }
+
+  /**
    * Renders everything.
    */
   function render() {
@@ -1289,6 +1328,7 @@ fm.on('ready', async (fm) => {
 
     if (isDirty) {
       mat4.perspective(projection, Math.PI * 0.25, gl.canvas.width / gl.canvas.height, 0.1, 1000.0)
+      mat4.ortho(orthographic, 0, gl.canvas.width, gl.canvas.height, 0, -1.0, 1.0)
       gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
       isDirty = false
     }
@@ -1319,6 +1359,7 @@ fm.on('ready', async (fm) => {
 
     renderSectors()
     renderObjects()
+    renderHUD()
 
   }
 

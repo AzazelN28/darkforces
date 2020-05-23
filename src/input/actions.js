@@ -9,6 +9,7 @@ export const Action = {
   STRAFE: 'strafe',
   TURN_LEFT: 'turn-left',
   TURN_RIGHT: 'turn-right',
+  RUN: 'run',
   JUMP: 'jump',
   CROUCH: 'crouch',
   HEADLAMP: 'headlamp',
