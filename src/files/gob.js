@@ -106,7 +106,7 @@ export function loadAllWithProgress({ urls, oncomplete, onprogress, onerror }) {
           lengthComputable: e.lengthComputable,
           loaded: e.loaded,
           total: e.total,
-          progress: e.progress * index / length
+          progress: (index / length) + (e.progress / length)
         })
       },
       onerror
