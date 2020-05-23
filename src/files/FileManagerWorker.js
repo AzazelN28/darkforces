@@ -145,7 +145,7 @@ self.addEventListener('message', (e) => {
 /**
  * Loads all the files needed to run Dark Forces.
  */
-gob
+/*gob
   .loadAll(
     'data/dark.gob',
     'data/sounds.gob',
@@ -157,4 +157,34 @@ gob
     self.postMessage({
       type: 'ready'
     })
+  })
+*/
+gob
+  .loadAllWithProgress({
+    urls: [
+      'data/dark.gob',
+      'data/sounds.gob',
+      'data/sprites.gob',
+      'data/textures.gob'
+    ],
+    oncomplete (entries) {
+      state.entries = entries
+      self.postMessage({
+        type: 'ready'
+      })
+    },
+    onprogress ({ lengthComputable, progress, loaded, total }) {
+      self.postMessage({
+        type: 'progress',
+        lengthComputable,
+        progress,
+        loaded,
+        total
+      })
+    },
+    onerror () {
+      self.postMessage({
+        type: 'error'
+      })
+    }
   })

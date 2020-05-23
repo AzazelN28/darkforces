@@ -41,6 +41,82 @@ export function parse(dataView) {
 }
 
 /**
+ * Loads a .GOB file with progress.
+ * @param {*} param0
+ */
+export function loadWithProgress({ url, oncomplete, onprogress, onerror }) {
+  const xhr = new XMLHttpRequest()
+
+  function handler (e) {
+    if (e.type !== 'progress') {
+      xhr.onload = null
+      xhr.onprogress = null
+      xhr.onerror = null
+      xhr.ontimeout = null
+      xhr.onabort = null
+    }
+
+    if (e.type === 'load') {
+      const dataView = new DataView(e.target.response)
+      return oncomplete(parse(dataView))
+    } else if (e.type === 'progress') {
+      const { lengthComputable, loaded, total } = e
+      const progress = lengthComputable ? loaded / total : Infinity
+      return onprogress({ lengthComputable, progress, loaded, total })
+    } else {
+      return onerror(e.type)
+    }
+  }
+
+  xhr.responseType = 'arraybuffer'
+  xhr.onload = handler
+  xhr.onprogress = handler
+  xhr.onerror = handler
+  xhr.ontimeout = handler
+  xhr.onabort = handler
+  xhr.open('GET', url)
+  xhr.send()
+}
+
+/**
+ *
+ * @param {*} param0
+ */
+export function loadAllWithProgress({ urls, oncomplete, onprogress, onerror }) {
+  const entries = []
+
+  const length = urls.length
+  let index = 0
+
+  function doLoad () {
+    const url = urls.shift()
+    loadWithProgress({
+      url,
+      oncomplete (currentEntries) {
+        index++
+        entries.push(...currentEntries)
+        if (urls.length > 0) {
+          doLoad()
+        } else {
+          oncomplete(entries)
+        }
+      },
+      onprogress (e) {
+        onprogress({
+          lengthComputable: e.lengthComputable,
+          loaded: e.loaded,
+          total: e.total,
+          progress: e.progress * index / length
+        })
+      },
+      onerror
+    })
+  }
+
+  doLoad()
+}
+
+/**
  * Loads a .GOB file
  * @param {URL|string} url - Url to load
  * @returns {Promise<Array<DirectoryEntry>|Error>}
@@ -71,4 +147,6 @@ export default {
   parse,
   load,
   loadAll,
+  loadWithProgress,
+  loadAllWithProgress
 }

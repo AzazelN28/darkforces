@@ -9,10 +9,21 @@ export default class FileManager extends EventEmitter {
     super()
 
     const handler = (e) => {
-      e.target.removeEventListener('message', handler)
       if (e.data.type === 'ready') {
+        e.target.removeEventListener('message', handler)
         this._isReady = true
         this.emit('ready', this)
+      } else if (e.data.type === 'progress') {
+        this.emit('progress', {
+          lengthComputable: e.data.lengthComputable,
+          total: e.data.total,
+          loaded: e.data.loaded,
+          progress: e.data.progress
+        })
+      } else if (e.data.type === 'error') {
+        e.target.removeEventListener('message', handler)
+        this._isReady = false
+        this.emit('error')
       } else {
         throw new Error('Invalid message')
       }

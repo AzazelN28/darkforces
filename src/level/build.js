@@ -39,6 +39,14 @@ export function buildMidWall(sector, wall) {
   return buildWall(sector, wall, sector.ceiling.altitude, sector.floor.altitude, sector.midx, sector.midy)
 }
 
+export function buildElevatorWall(sector, item, wall) {
+  const firstStop = parseFloat(item.stops[0][0])
+  const lastStop = parseFloat(item.stops[item.stops.length - 1][0])
+  const height = lastStop - firstStop
+  console.log('height', height)
+  return buildWall(sector, wall, firstStop, firstStop + height, sector.midx, sector.midy)
+}
+
 /**
  * Builds an adjoined wall
  * @param {Sector} sector
@@ -130,6 +138,7 @@ export function buildCeiling(sector) {
 
 export default {
   buildWall,
+  buildElevatorWall,
   buildMidWall,
   buildAdjoinedBottomWall,
   buildAdjoinedTopWall,

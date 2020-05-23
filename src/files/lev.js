@@ -143,9 +143,6 @@ export function parse(dataView, start, size) {
     'sector-flags': (line) => {
       const [x, y, z] = parseLine(' FLAGS {n} {n} {n}', line)
       sector.flags = [x, y, z]
-      if (x !== 0 ||  y !== 0 || z !== 0) {
-        console.log(sector)
-      }
       return 'sector-layer'
     },
     'sector-layer': (line) => {
@@ -201,9 +198,6 @@ export function parse(dataView, start, size) {
         walk,
         flags: [u, v, w],
         light
-      }
-      if (u !== 0 || v !== 0 || w !== 0) {
-        console.log(wall, sector)
       }
       sector.walls.push(wall)
       if (sector.wallCount === sector.walls.length) {

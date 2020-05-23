@@ -1,6 +1,6 @@
-import earcut from 'earcut'
-import { vec2 } from 'gl-matrix'
-import { buildMidWall, buildAdjoinedBottomWall, buildAdjoinedTopWall, buildCeiling, buildFloor } from './build'
+// import earcut from 'earcut'
+import { vec2, vec3 } from 'gl-matrix'
+import { buildElevatorWall, buildMidWall, buildAdjoinedBottomWall, buildAdjoinedTopWall, buildCeiling, buildFloor } from './build'
 import { from, isWithin } from '../utils/range'
 
 /**
@@ -277,8 +277,30 @@ export async function load(fm, name) {
   const upperCaseName = name.toUpperCase()
   console.log(`Loading ${upperCaseName}.LEV`)
   const basic = await fm.fetch(`${upperCaseName}.LEV`)
-  console.log(basic)
+  console.log(`Loading ${upperCaseName}.GOL`)
+  const goals = await fm.fetch(`${upperCaseName}.GOL`)
+  console.log(goals)
+  console.log(`Loading ${upperCaseName}.INF`)
+  const info = await fm.fetch(`${upperCaseName}.INF`)
+  // console.log(basic)
   const sectors = basic.sectors.map((sector, index) => {
+    const item = info.items.find((item) => item.name === sector.name)
+    if (item) {
+      if (item.className === 'elevator') {
+        console.log(item)
+        console.log(item.stops[0][0])
+        if (item.stops[0][0].substr(0, 1) === '@') {
+          const y = parseFloat(item.stops[0][0].substr(1))
+          console.log(y)
+          vec3.set(item.floor.position, 0, y, 0)
+        } else {
+          const y = parseFloat(item.stops[0][0])
+          console.log(y)
+          vec3.set(item.floor.position, 0, y, 0)
+        }
+        console.log('Item position', item.position, sector.name)
+      }
+    }
     const indices = triangulate(sector)
     const walls = sector.walls.map((wall, index) => {
       const start = sector.vertices[wall.left]
@@ -298,6 +320,13 @@ export async function load(fm, name) {
         // Otherwise we build the top part of the wall and
         // the bottom part of the wall.
       } else {
+        /*
+        if (item) {
+          if (item.className === 'elevator') {
+            midGeometry = buildElevatorWall(sector, item, wall)
+          }
+        } else {
+        */
         if (wall.mirror < 0) {
           topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
           bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
@@ -305,6 +334,7 @@ export async function load(fm, name) {
           topGeometry = buildAdjoinedTopWall(sector, basic.sectors[wall.adjoin], wall)
           bottomGeometry = buildAdjoinedBottomWall(sector, basic.sectors[wall.adjoin], wall)
         }
+        // }
       }
       return {
         ...wall,
@@ -341,11 +371,14 @@ export async function load(fm, name) {
     const boundingRect = computeSectorBoundingRect(sector)
     const [, , , , width, height] = boundingRect
     const boundingArea = width * height
-    if (sector.flags[0] !== 0 || sector.flags[1] !== 0 || sector.flags[2] !== 0) {
-      console.log(index, sector.name, sector.flags.map((flag) => flag.toString(2).padStart(16,0)))
+    if (sector.flags[0] !== 0
+     || sector.flags[1] !== 0
+     || sector.flags[2] !== 0) {
+      console.log('Sector con flags', index, sector.name, sector.flags.map((flag) => flag.toString(2).padStart(16,0)))
     }
     return {
       ...sector,
+      info: item,
       index,
       indices,
       indexBuffer: null,
@@ -370,7 +403,7 @@ export async function load(fm, name) {
   })
   console.log(`Loading palette ${basic.palette}`)
   const palette = await fm.fetch(basic.palette)
-  console.log(palette)
+  // console.log(palette)
   let message = ''
   const styles = []
   for (let index = 0; index < palette.length; index+=4) {
@@ -421,40 +454,30 @@ export async function load(fm, name) {
     console.log(`Loading texture ${current} (${index + 1}/${list.length})`)
     return fm.fetch(current).catch((error) => null)
   }))
-  console.log(textures)
   console.log(`Loading ${upperCaseName}.O`)
   const objects = await fm.fetch(`${upperCaseName}.O`)
-  console.log(objects)
   console.log(`Loading meshes ${objects.podCount}`)
   const meshes = await Promise.all(objects.pods.map((current) => {
     console.log(`Loading mesh ${current}`)
     return fm.fetch(current)
   }))
-  console.log(meshes)
   console.log(`Loading frames ${objects.frameCount}`)
   const frames = new Map(await Promise.all(objects.frames.map((current) => {
     console.log(`Loading frame ${current}`)
     return fm.fetch(current)
       .then((frame) => [current, frame])
   })))
-  console.log(frames)
   console.log(`Loading sprites ${objects.spriteCount}`)
   const sprites = await Promise.all(objects.sprites.map((current) => {
     console.log(`Loading sprite ${current}`)
     return fm.fetch(current)
   }))
-  console.log(sprites)
   console.log(`Loading sounds ${objects.soundCount}`)
   const sounds = await Promise.all(objects.sounds.map((current) => {
     console.log(`Loading sound ${current}`)
     return fm.fetch(current)
   }))
-  console.log(`Loading ${upperCaseName}.INF`)
-  const info = await fm.fetch(`${upperCaseName}.INF`)
-  console.log(info)
-  console.log(`Loading ${upperCaseName}.GOL`)
-  const goals = await fm.fetch(`${upperCaseName}.GOL`)
-  console.log(goals)
+
   return {
     fogColor: getFogColor(palette, colorMaps),
     sectors,

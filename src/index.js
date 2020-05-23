@@ -14,7 +14,6 @@ import sound from './audio/sound'
 import baseSounds from './audio/sounds'
 
 import { degreesToRadians } from './utils/angle'
-import log from './utils/log'
 
 import touchpad from './input/touchpad'
 import keyboard from './input/keyboard'
@@ -35,40 +34,36 @@ import meshFragmentShader from './shaders/mesh.f.glsl'
 
 import { approximateToZero } from './utils/range'
 
+const progress = document.querySelector('progress')
+
 const fm = new FileManager()
+fm.on('error', () => {
+  console.error('Error')
+})
+fm.on('progress', (e) => {
+  progress.value = e.progress
+})
 fm.on('ready', async (fm) => {
   window.fm = fm
   window.sound = sound
 
-  log.write(await fm.fetch('JEDI.LVL'))
   const sounds = await Promise.all(baseSounds.map((sound, index, list) => {
-    log.write(`Loading sound ${sound} ${index+1}/${list.length}`)
+    console.log(`Loading sound ${sound} ${index+1}/${list.length}`)
     return fm.fetch(sound)
   }))
 
   window.sounds = sounds
-
-  log.write(sounds)
-  log.write(location)
   const url = new URL(location)
-  log.write(url.searchParams)
-
   const levelName = url.searchParams.has('level')
     ? url.searchParams.get('level')
     : 'SECBASE'
 
-  log.write(await fm.fetch('JEDI.LVL'))
-  log.write(levelName)
   const currentLevel = await level.load(fm, levelName)
-  log.write(currentLevel)
-
   const { fogColor } = currentLevel
   const engine = document.querySelector('canvas#engine')
   const debug = document.querySelector('canvas#debug')
   const gl = engine.getContext('webgl2', { antialias: false, stencil: true })
   const cx = debug.getContext('2d', { antialias: false })
-
-  console.log('Stencil bits', gl.getParameter(gl.STENCIL_BITS))
 
   const LOOK_UPDOWN_LIMIT = 1.0
   const DEFAULT_ZOOM = 20
@@ -246,7 +241,7 @@ fm.on('ready', async (fm) => {
   // Sets the initial position.
   const { position: [x, y, z], rotation: [pitch, yaw, roll] } = currentLevel.objects.find((object) => object.className === 'spirit')
 
-  log.write(pitch, yaw, roll)
+  console.log(pitch, yaw, roll)
 
   vec3.set(position, -x, y, z)
   vec3.set(viewAngles, degreesToRadians(pitch), degreesToRadians(yaw + 180), degreesToRadians(roll))
@@ -261,7 +256,8 @@ fm.on('ready', async (fm) => {
     u_sampler: gl.getUniformLocation(defaultProgram, 'u_sampler'),
     u_texbase: gl.getUniformLocation(defaultProgram, 'u_texbase'),
     u_light: gl.getUniformLocation(defaultProgram, 'u_light'),
-    u_fogColor: gl.getUniformLocation(defaultProgram, 'u_fogColor')
+    u_fogColor: gl.getUniformLocation(defaultProgram, 'u_fogColor'),
+    u_offset: gl.getUniformLocation(defaultProgram, 'u_offset')
   }
   const stencilProgram = createProgramFromSource(gl, stencilVertexShader, stencilFragmentShader)
   const spriteProgram = createProgramFromSource(gl, spriteVertexShader, spriteFragmentShader)
@@ -283,7 +279,7 @@ fm.on('ready', async (fm) => {
     u_size: gl.getUniformLocation(meshProgram, 'u_size')
   }
 
-  log.write('Uploading meshes...')
+  console.log('Uploading meshes...')
   for (const mesh of currentLevel.meshes) {
     for (const object of mesh.objects) {
       const indices = []
@@ -300,13 +296,13 @@ fm.on('ready', async (fm) => {
       object.vertices = object.vertices.reduce((previous, current) => previous.concat(current), [])
       object.indexBuffer = createIndexBuffer(gl, new Uint16Array(object.indices))
       object.vertexBuffer = createVertexBuffer(gl, new Float32Array(object.vertices))
-      console.log(object)
+      // console.log(object)
     }
     console.log(mesh)
   }
-  log.write('All meshes uploaded')
+  console.log('All meshes uploaded')
 
-  log.write('Uploading buffers...')
+  console.log('Uploading buffers...')
   for (const sector of currentLevel.sectors) {
     sector.indexBuffer = createIndexBuffer(gl, new Uint16Array(sector.indices))
     sector.floor.vertexBuffer = createVertexBuffer(gl, new Float32Array(sector.floor.geometry))
@@ -320,30 +316,30 @@ fm.on('ready', async (fm) => {
       }
     })
   }
-  log.write('All buffers uploaded')
+  console.log('All buffers uploaded')
 
-  log.write('Uploading textures...')
+  console.log('Uploading textures...')
   for (const texture of currentLevel.textures) {
     if (texture && texture.imageData) {
       texture.texture = createTexture2D(gl, texture.imageData)
     }
   }
-  log.write('All textures uploaded')
+  console.log('All textures uploaded')
 
-  log.write(currentLevel.frames)
-  log.write('Uploading frames')
+  console.log(currentLevel.frames)
+  console.log('Uploading frames')
   for (const [, frame] of currentLevel.frames) {
     frame.texture = createTexture2D(gl, frame.imageData, {
       wrapS: gl.CLAMP_TO_EDGE,
       wrapT: gl.CLAMP_TO_EDGE
     })
   }
-  log.write('All frames uploaded')
+  console.log('All frames uploaded')
 
-  log.write('Uploading sprites')
+  console.log('Uploading sprites')
   for (const sprite of currentLevel.sprites) {
     if (!sprite) {
-      log.write('Skipping invalid sprite')
+      console.log('Skipping invalid sprite')
       continue
     }
     for (const state of sprite.states) {
@@ -357,7 +353,7 @@ fm.on('ready', async (fm) => {
       }
     }
   }
-  log.write('All sprites uploaded')
+  console.log('All sprites uploaded')
 
   window.currentLevel = currentLevel
 
@@ -704,7 +700,7 @@ fm.on('ready', async (fm) => {
   let isRenderOnlyCurrentSector = true
   let isDebugEnabled = false
 
-  function renderSector(sector) {
+  function renderSectorFloor(sector) {
     // If there's floor texture, then we should render floor plane.
     if (currentLevel.textures[sector.floor.texture.index]) {
 
@@ -735,6 +731,12 @@ fm.on('ready', async (fm) => {
       gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.floor.texture.index].texture)
       gl.uniform1i(defaultProgramUniforms.u_sampler, 0)
       gl.uniform1f(defaultProgramUniforms.u_light, sector.light)
+
+      if (sector.info) {
+        if (sector.info.className === 'elevator') {
+          gl.uniform3fv(defaultProgramUniforms.u_offset, sector.info.floor.position)
+        }
+      }
 
       gl.bindBuffer(gl.ARRAY_BUFFER, sector.floor.vertexBuffer)
 
@@ -773,6 +775,12 @@ fm.on('ready', async (fm) => {
       gl.uniform1i(defaultProgramUniforms.u_sampler, 0)
       gl.uniform1f(defaultProgramUniforms.u_light, sector.light)
 
+      if (sector.info) {
+        if (sector.info.className === 'elevator') {
+          gl.uniform3fv(defaultProgramUniforms.u_offset, sector.info.floor.position)
+        }
+      }
+
       gl.bindBuffer(gl.ARRAY_BUFFER, sector.floor.vertexBuffer)
 
       gl.enableVertexAttribArray(defaultProgramAttributes.a_coords)
@@ -789,9 +797,12 @@ fm.on('ready', async (fm) => {
       // gl.drawElements(gl.TRIANGLES, sector.indices.length, gl.UNSIGNED_SHORT, 0)
     }
 
+  }
+
+  function renderSectorCeiling(sector) {
     // If there's ceiling texture then we should rendering this sector.
-    if (currentLevel.textures[sector.ceiling.texture.index]
-      && !(sector.flags[0] & 0x01 === 0x01)) {
+    if (currentLevel.textures[sector.ceiling.texture.index] &&
+      !(sector.flags[0] & 0x01 === 0x01)) {
 
       // prepare stencil buffer
       gl.enable(gl.STENCIL_TEST)
@@ -815,6 +826,14 @@ fm.on('ready', async (fm) => {
       gl.bindTexture(gl.TEXTURE_2D, currentLevel.textures[sector.ceiling.texture.index].texture)
       gl.uniform1i(defaultProgramUniforms.u_sampler, 0)
       gl.uniform1f(defaultProgramUniforms.u_light, sector.light)
+
+      if (sector.info) {
+        if (sector.info.className === 'elevator') {
+          gl.uniform3fv(defaultProgramUniforms.u_offset, sector.info.ceiling.position)
+        }
+      }
+
+      // gl.uniform3f(defaultProgramUniforms.u_offset, sector.)
 
       gl.bindBuffer(gl.ARRAY_BUFFER, sector.ceiling.vertexBuffer)
 
@@ -845,6 +864,12 @@ fm.on('ready', async (fm) => {
       gl.uniform1i(defaultProgramUniforms.u_sampler, 0)
       gl.uniform1f(defaultProgramUniforms.u_light, sector.light)
 
+      if (sector.info) {
+        if (sector.info.className === 'elevator') {
+          gl.uniform3fv(defaultProgramUniforms.u_offset, sector.info.ceiling.position)
+        }
+      }
+
       gl.bindBuffer(gl.ARRAY_BUFFER, sector.ceiling.vertexBuffer)
 
       gl.enableVertexAttribArray(defaultProgramAttributes.a_coords)
@@ -859,7 +884,15 @@ fm.on('ready', async (fm) => {
       gl.disable(gl.STENCIL_TEST)
       // gl.drawElements(gl.TRIANGLES, sector.indices.length, gl.UNSIGNED_SHORT, 0)
     }
+  }
 
+  /**
+   * Renderiza un sector
+   * @param {Sector} sector
+   */
+  function renderSector(sector) {
+    renderSectorFloor(sector)
+    renderSectorCeiling(sector)
     // Renderiza las paredes del sector.
     renderWalls(sector)
   }
@@ -868,7 +901,6 @@ fm.on('ready', async (fm) => {
    * Renderiza los sectores
    */
   function renderSectors() {
-
     gl.enable(gl.DEPTH_TEST)
     gl.useProgram(defaultProgram)
     gl.uniform4f(defaultProgramUniforms.u_fogColor, ...fogColor)
@@ -1006,6 +1038,8 @@ fm.on('ready', async (fm) => {
 
     gl.uniformMatrix4fv(spriteProgramUniforms.u_mvp, false, spriteProjectionView)
 
+    // TODO: Lo mejor para esto sería que la propia función
+    // que parsea elementos del escenario lo haga.
     let frame
     if (object.logics.includes('BATTERY')) {
       frame = currentLevel.frames.get('IBATTERY.FME')
@@ -1124,7 +1158,7 @@ fm.on('ready', async (fm) => {
 
     const sprite = currentLevel.sprites[object.data]
     if (!sprite) {
-      // log.write('Skipping rendering sprite')
+      // console.log('Skipping rendering sprite')
       return
     }
     const angles = sprite.states[0].angles.length
@@ -1306,8 +1340,6 @@ fm.on('ready', async (fm) => {
     if (!isDebugEnabled) {
       return
     }
-
-    log.render(cx)
 
     const scx = cx.canvas.width >> 1
     const scy = cx.canvas.height >> 1
@@ -1494,33 +1526,36 @@ fm.on('ready', async (fm) => {
 
     const info = currentLevel.info.items.find((item) => item.name === currentSector.name)
     if (info) {
-      cx.fillText(`${info.type}`, 0, textY += 16)
-      cx.fillText(`${info.num}`, 0, textY += 16)
-      cx.fillText(`${info.className}`, 0, textY += 16)
-      cx.fillText(`${info.action}`, 0, textY += 16)
-      cx.fillText(`${info.speed}`, 0, textY += 16)
-      cx.fillText(`${info.eventMask}`, 0, textY += 16)
-      cx.fillText(`${info.master}`, 0, textY += 16)
-      cx.fillText(`${info.center && info.center.join(', ')}`, 0, textY += 16)
-      cx.fillText(`Sounds ${info.sounds.length}`, 0, textY += 16)
+      cx.fillText('Sector info', 0, textY += 16)
+      cx.fillText(`- Type: ${info.type}`, 0, textY += 16)
+      cx.fillText(`- Num: ${info.num}`, 0, textY += 16)
+      cx.fillText(`- ClassName: ${info.className}`, 0, textY += 16)
+      cx.fillText(`- Action: ${info.action}`, 0, textY += 16)
+      cx.fillText(`- Speed: ${info.speed}`, 0, textY += 16)
+      cx.fillText(`- EventMask: ${info.eventMask}`, 0, textY += 16)
+      cx.fillText(`- Ceiling Position: ${info.ceiling.position.join(', ')}`, 0, textY += 16)
+      cx.fillText(`- Floor Position: ${info.floor.position.join(', ')}`, 0, textY += 16)
+      cx.fillText(`- Master: ${info.master}`, 0, textY += 16)
+      cx.fillText(`- Center: ${info.center && info.center.join(', ')}`, 0, textY += 16)
+      cx.fillText(`- Sounds ${info.sounds.length}`, 0, textY += 16)
       for (const sound of info.sounds) {
-        cx.fillText(`${sound}`, 0, textY += 16)
+        cx.fillText(`    ${sound}`, 0, textY += 16)
       }
-      cx.fillText(`Pages ${info.pages.length}`, 0, textY += 16)
+      cx.fillText(`- Pages ${info.pages.length}`, 0, textY += 16)
       for (const page of info.pages) {
-        cx.fillText(`${page.join(', ')}`, 0, textY += 16)
+        cx.fillText(`    ${page.join(', ')}`, 0, textY += 16)
       }
-      cx.fillText(`Stops ${info.stops.length}`, 0, textY += 16)
+      cx.fillText(`- Stops ${info.stops.length}`, 0, textY += 16)
       for (const stop of info.stops) {
-        cx.fillText(`  ${stop.join(', ')}`, 0, textY += 16)
+        cx.fillText(`    ${stop.join(', ')}`, 0, textY += 16)
       }
-      cx.fillText(`Messages ${info.messages.length}`, 0, textY += 16)
+      cx.fillText(`- Messages ${info.messages.length}`, 0, textY += 16)
       for (const message of info.messages) {
-        cx.fillText(`  ${message.join(', ')}`, 0, textY += 16)
+        cx.fillText(`    ${message.join(', ')}`, 0, textY += 16)
       }
-      cx.fillText(`Clients ${info.clients.length}`, 0, textY += 16)
+      cx.fillText(`- Clients ${info.clients.length}`, 0, textY += 16)
       for (const client of info.clients) {
-        cx.fillText(`  ${client}`, 0, textY += 16)
+        cx.fillText(`    ${client}`, 0, textY += 16)
       }
     }
     // FIX: There are some FMEs that aren't rendered.

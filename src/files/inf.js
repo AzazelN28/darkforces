@@ -2,6 +2,7 @@
 import dataViewUtils from 'utils/dataView'
 import { createParseEntry } from 'utils/parse'
 import { parseContent, parseLine, isLine } from '../utils/parse'
+import { vec3 } from 'gl-matrix'
 
 /**
  * Parses an INF file.
@@ -22,6 +23,12 @@ export function parse(dataView, start, size) {
       type,
       name,
       num,
+      floor: {
+        position: vec3.create()
+      },
+      ceiling: {
+        position: vec3.create()
+      },
       className: null,
       action: null,
       speed: null,
