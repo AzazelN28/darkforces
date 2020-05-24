@@ -33,19 +33,34 @@ import meshVertexShader from './shaders/mesh.v.glsl'
 import meshFragmentShader from './shaders/mesh.f.glsl'
 
 import { approximateToZero } from './utils/range'
+import arrayBuffer from './utils/arrayBuffer'
+
+import Timidity from 'timidity'
+import freepats from 'freepats'
+console.log(freepats)
 
 const progress = document.querySelector('progress')
 
 const fm = new FileManager()
 fm.on('error', () => {
   console.error('Error')
-})
-fm.on('progress', (e) => {
+}).on('progress', (e) => {
   progress.value = e.progress
-})
-fm.on('ready', async (fm) => {
+}).on('ready', async (fm) => {
   window.fm = fm
   window.sound = sound
+
+  const music = await fm.fetch('VICTORY.GMD')
+  console.log(music)
+  const timidity = new Timidity()
+  timidity.on('error', console.error)
+  timidity.on('timeupdate', console.log)
+  timidity.on('ended', console.log)
+  timidity.on('playing', console.log)
+  timidity.on('paused', console.log)
+  timidity.on('buffering', console.log)
+  timidity.load(new Uint8Array(music.data))
+
 
   const sounds = await Promise.all(baseSounds.map((sound, index, list) => {
     console.log(`Loading sound ${sound} ${index+1}/${list.length}`)
@@ -1593,6 +1608,7 @@ fm.on('ready', async (fm) => {
     touchpad.start()
     keyboard.start()
     keyboard.on('Digit1', () => isDebugEnabled = !isDebugEnabled)
+    keyboard.on('Digit2', () => timidity.play())
     keyboard.on('BracketLeft', () => {
       if (zoom > MIN_ZOOM) zoom--
     })

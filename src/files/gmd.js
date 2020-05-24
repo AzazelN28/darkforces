@@ -10,21 +10,22 @@ import { createParseEntry } from 'utils/parse'
  */
 export function parse(dataView, start, size) {
   const signature = dataViewUtils.getString(dataView, start + 0, start + 4)
+  console.log(signature, signature === 'MIDI')
   if (signature !== 'MIDI') {
     throw new Error('Invalid GMD signature')
   }
   const length = dataView.getUint32(start + 4)
   console.log(length)
-  const unknown = dataViewUtils.getString(dataView, start + 4, start + 8)
-  if (unknown !== 'MDpg') {
+  const mdpgSignature = dataViewUtils.getString(dataView, start + 8, start + 12)
+  if (mdpgSignature !== 'MDpg') {
     throw new Error('Invalid GMD unknown signature')
   }
-  const unknownLength = dataView.getUint32(start + 8)
-  console.log(unknownLength)
-  const data = dataView.buffer.slice(start + 12 + unknownLength)
+  const mdpgLength = dataView.getUint32(start + 12)
+  console.log(mdpgLength)
+  const data = dataView.buffer.slice(start + 16 + mdpgLength, start + size)
   return {
     length,
-    unknownLength,
+    mdpgLength,
     data
   }
 }

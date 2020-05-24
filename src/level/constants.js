@@ -1,5 +1,16 @@
 /**
+ * Light values
+ * @readonly
+ * @enum {number}
+ */
+export const Light = {
+  MIN: 0,
+  MAX: 31
+}
+
+/**
  * Sector flags
+ * @readonly
  * @enum {number}
  */
 export const SectorFlag = {
@@ -19,6 +30,7 @@ export const SectorFlag = {
 
 /**
  * Wall flags.
+ * @readonly
  * @enum {number}
  */
 export const WallFlag = {

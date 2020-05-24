@@ -169,6 +169,7 @@ gob
     ],
     oncomplete (entries) {
       state.entries = entries
+      console.log(entries)
       self.postMessage({
         type: 'ready'
       })
