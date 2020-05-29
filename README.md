@@ -1,6 +1,14 @@
 # Star Wars: Dark Forces
 
-This is a reimplementation or remake of the 1996 classic Star Wars: Dark Forces. It is a **work in progres** so there are a lot of things to do.
+![Share](src/share.jpg)
+
+This is a reimplementation or remake of the 1996 classic Star Wars: Dark Forces. It is a **work in progres** so there are a lot of
+things to do.
+
+## Reimplementation
+
+To reimplement Dark Forces I've been doing some reverse engineering of DARK.EXE and doing a lot of speculation on how the engine
+works.
 
 ## File formats
 
@@ -68,6 +76,8 @@ Next there is a list of known formats and their purpose:
 
 ## Thanks
 
-- To [Nicholas Jankowski](https://github.com/njankowski) for his great [Dark Forces Tools](https://github.com/njankowski/dftools)
+- [Nicholas Jankowski](https://github.com/njankowski) for his great [Dark Forces Tools](https://github.com/njankowski/dftools)
+- [LuciusDXL](https://github.com/luciusdxl) for his awesome [TheForceEngine](https://github.com/luciusdxl/theforceengine)
+- [Mindwerks](https://github.com/Mindwerks) for its [XLEngine](https://github.com/Mindwerks/XLEngine)
 
 Made with :heart: by [AzazelN28](https://github.com/azazeln28)

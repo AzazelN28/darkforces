@@ -1,4 +1,5 @@
 import EventEmitter from 'events'
+import Worker from './FileManager.worker'
 
 /**
  * FileManager loads data into a Worker to parallelize parsing
@@ -30,7 +31,7 @@ export default class FileManager extends EventEmitter {
     }
 
     this._isReady = false
-    this._worker = new Worker('./FileManagerWorker.js')
+    this._worker = new Worker()
     this._worker.addEventListener('message', handler)
     this._id = 0
   }
