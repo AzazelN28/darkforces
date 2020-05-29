@@ -6,6 +6,7 @@
   "scripts": {
     "start": "cross-env NODE_ENV=development webpack-dev-server",
     "build": "cross-env NODE_ENV=production webpack",
+    "neocities": "node neocities.js",
     "docs": "jsdoc -c .jsdocrc.json",
     "docs:serve": "serve dist/docs",
     "test": "mocha --require chai/register-expect --require @babel/register --recursive 'src/**/*.spec.js'"
@@ -27,10 +28,13 @@
     "babel-plugin-groundskeeper-willie": "^1.3.2",
     "babel-plugin-module-resolver": "^4.0.0",
     "chai": "^4.2.0",
+    "commander": "^5.1.0",
     "copy-webpack-plugin": "^6.0.1",
     "cross-env": "^7.0.2",
+    "dotenv": "^8.2.0",
     "eslint": "^6.8.0",
     "file-loader": "^6.0.0",
+    "glob": "^7.1.6",
     "glsl-shader-loader": "^0.1.6",
     "html-webpack-plugin": "^4.3.0",
     "jsdoc": "^3.6.4",
