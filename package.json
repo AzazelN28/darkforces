@@ -39,7 +39,7 @@
     "html-webpack-plugin": "^4.3.0",
     "jsdoc": "^3.6.4",
     "minami": "^1.2.3",
-    "mocha": "^7.1.1",
+    "mocha": "^10.2.0",
     "neocities": "0.0.3",
     "serve": "^11.3.0",
     "webpack": "^4.43.0",
